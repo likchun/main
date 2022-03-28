@@ -2,7 +2,7 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.0(10)
+ * @version 1.4.2(12)
  * @date 2022-03-17
  * 
  * @copyright
@@ -38,13 +38,12 @@
 #include "myinc.h"
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.1 | Build 11 | Last Update 23 Mar 2022";
+std::string code_ver = "Version 1.4.2 | Build 12 | Last Update 28 Mar 2022";
 
 using namespace std;
 using namespace myinc;
 namespace fs = std::filesystem;
 using path = fs::path;
-using fs::current_path;
 
 struct Variables
 {
@@ -69,7 +68,7 @@ struct Variables
 	// Suppression of Synaptic Weights
 	double suppr_lv    = 0;
 	int    suppr_type  = -1; // +1: suppress exc links, -1: suppress inh links
-	vector<int>	suppr_nodes;
+	vector <int> suppr_nodes;
 
 	// Parameters for Izhikevich's Neuron Model
 	double a_inh = 0.10, b_inh = 0.2, c_inh = -65, d_inh = 2;
@@ -90,6 +89,7 @@ struct Variables
 	// Data Output
 	path outfile_path = "";
 	path outfile_spkt = "spkt.txt";
+	path outfile_spks = "spks.txt";
 	path outfile_info = "info.txt";
 	path outfile_cont = "cont.dat";
 	bool expoTimeSeri = true;
@@ -118,8 +118,10 @@ const int import_adjm(vector<vector<double>>&, Variables&);
 const int estimate_trunc_t(vector<vector<double>>&, Variables&);
 int import_prev_vars(vector<double>&, vector<double>&, vector<double>&, Variables&);
 const int import_prev_spkt(vector<vector<double>>&, path&);
+const int import_prev_spks(vector<vector<int>>&, path&);
 const int classify_neuron_class(vector<int>&, vector<vector<double>>&);
 const int create_quick_link_ref(vector<vector<double>>&, vector<vector<int>>&, vector<vector<int>>&);
+void setup_hash_table_exp(vector<double>&, vector<double>&, int, int);
 void suppress_inhibition(vector<vector<double>>&, double);
 void suppress_inhibition_of_selected(vector<vector<double>>&, vector<vector<int>>&, Variables&);
 void suppress_excitation(vector<vector<double>>&, double);
@@ -127,6 +129,7 @@ void suppress_excitation_of_selected(vector<vector<double>>&, vector<vector<int>
 const int export_info(int, float, Variables&);
 const int export_cont(int, vector<double>&, vector<double>&, vector<double>&, Variables&);
 const int export_spkt(vector<vector<double>>&, path&);
+const int export_spks(vector<vector<int>>&, path&);
 const int export_time_series_bin(vector<float>&, path&, int);
 const int throw_error(string);
 const int throw_error(string, path&);
@@ -140,28 +143,35 @@ int main(int argc, char** argv)
 	const char* optstr = "hw:i:o:l:";
 	if (parser(argc, argv, optstr, vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
 
-	auto [time_fmt1, time_fmt2] = timer.report_time();
-	outlog.open(set_logfile_name(vars, time_fmt2));
 
-	outlog << '\n' << code_ver << "\n\n" << time_fmt1;
-	outlog << "\n[Initialization] starts\n";
-	timer.stopwatch_begin();		
-
-	int mode = 0;           // 0: overwrite mode | 1: continue mode
+	int mode = 0;			// 0: overwrite mode | 1: continue mode
 	int continuation = -1;	// count the number of times of continuation
 
 	mt19937 random_generator;
-	normal_distribution<double> norm_dist(0, 1);
+	normal_distribution <double> norm_dist(0, 1);
 
-	int TIMESERI_RESERVE_SIZE;
-	double now_t, diff_t, noise, memp_temp, spike_sum;
-	double conductance_inh, conductance_exc;
-	// `inh_links[i][j]` stores the j-th inhibitory incoming link for node i (i, j starts from 0)
-	vector<vector<int>> inh_links, exc_links;
-	vector<double> membrane_potential, recovery_variable, synaptic_current;
-	vector<vector<double>> spike_timestamps, synaptic_weights;
-	vector<int> neuron_type;
-	vector<float> expo_memp;
+	size_t	TIMESERI_RESERVE_SIZE;
+	int		now_step, diff_step, total_step;
+	int		trunc_step_inh, trunc_step_exc;
+	double	noise, spike_sum, memp_temp;
+	double	conductance_inh, conductance_exc;
+
+	vector <int>		neuron_type;
+	vector <float>		expo_memp;
+	vector <double>		membrane_potential, recovery_variable, synaptic_current;
+	vector <double>		HASHTABLE_EXP_INH, HASHTABLE_EXP_EXC;
+
+	vector <vector<int>>	inh_links, exc_links;	// `inh_links[i][j]` stores the j-th inhibitory incoming link for node i (i, j starts from 0)
+	vector <vector<int>>	spike_timesteps;
+	vector <vector<double>>	spike_timestamps, synaptic_weights;
+
+
+	auto [time_fmt1, time_fmt2] = timer.report_time();
+	outlog.open(set_logfile_name(vars, time_fmt2));
+
+	outlog << '\n' << code_ver << "\n\n" << time_fmt1 << '\n';
+	outlog << "[Initialization] starts\n";
+	timer.stopwatch_begin();	
 
 	set_io_path(vars);
 	if (check_file_existance(vars) && !vars.forceOverwrt)
@@ -183,7 +193,7 @@ int main(int argc, char** argv)
 		else { return throw_error("invalid_input", user_input); }
 	}
 
-	if (mode == 0)          // overwrite mode
+	if (mode == 0)			// overwrite mode
 	{
 		if (import_vars(vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
 		if (import_adjm(synaptic_weights, vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
@@ -192,9 +202,11 @@ int main(int argc, char** argv)
 		recovery_variable = vector<double>(vars.mat_size);
 		synaptic_current = vector<double>(vars.mat_size);
 		spike_timestamps = vector<vector<double>>(vars.mat_size);
+		spike_timesteps = vector<vector<int>>(vars.mat_size);
 		fill(membrane_potential.begin(), membrane_potential.end(), vars.memp_initval);
 		fill(recovery_variable.begin(), recovery_variable.end(), vars.recv_initval);
-		now_t = 0;
+		now_step = 0;
+		total_step = (int)(vars.Tn/vars.dt);
 		mt19937 rg(vars.rand_seed);
 		random_generator = rg;
 		continuation = -1;
@@ -202,20 +214,21 @@ int main(int argc, char** argv)
 			ofstream clf_memp(vars.outfile_memp, ios::trunc | ios::binary);
 			clf_memp.close();
 		}
-		if (vars.trunc_t_inh == -1) {                   // use manual truncation time
-			estimate_trunc_t(synaptic_weights, vars);   // else, estimate the spiking truncation time
+		if (vars.trunc_t_inh == -1) {					// use manual truncation time
+			estimate_trunc_t(synaptic_weights, vars);	// else, estimate the spiking truncation time
 		}
 	}
-	else if (mode == 1)     // continue mode
+	else if (mode == 1)		// continue mode
 	{
 		continuation = import_prev_vars(membrane_potential, recovery_variable, synaptic_current, vars);
 		if (continuation == -1) {
 			return throw_error("coding_error", "unexpected value for 'continuation'");
 		}
-		now_t = vars.Tn;
+		now_step = (int)(vars.Tn/vars.dt);
 		mt19937 rg(vars.rand_seed);
 		random_generator = rg;
 		if (import_prev_spkt(spike_timestamps, vars.outfile_spkt) == EXIT_FAILURE) { return EXIT_FAILURE; }
+		if (import_prev_spks(spike_timesteps, vars.outfile_spks) == EXIT_FAILURE) { return EXIT_FAILURE; }
 		outlog << "> previous data are successfully imported\n\n"
 			   << "> previous simulation duration T: " << vars.Tn << " ms\n"
 			   << "> extend the duration to (in ms): ";
@@ -224,34 +237,44 @@ int main(int argc, char** argv)
 		if (user_input <= vars.Tn) { return throw_error("invalid_input", to_string(user_input)); }
 		outlog << '\n';
 		vars.Tn = user_input;
+		total_step = (int)(vars.Tn/vars.dt);
 		if (import_adjm(synaptic_weights, vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
 		// Discard the first (T/dt) random numbers, so that the generation of random number begins properly
-		double waste_time = 0;
-		while (waste_time < now_t) {
-			waste_time += vars.dt;
-			for (int i = 0; i < vars.mat_size; i++) {
+		int waste_step = 0;
+		while (waste_step <= now_step) {
+			waste_step++;
+			for (int node = 0; node < vars.mat_size; node++) {
 				noise = norm_dist(random_generator);
 			}
 		}
 	}
 
-	neuron_type = vector<int>(synaptic_weights.size());
+	neuron_type = vector<int>(vars.mat_size);
 	if (classify_neuron_class(neuron_type, synaptic_weights) == EXIT_FAILURE) { return EXIT_FAILURE; }
 
 	if (vars.suppr_lv != 0)
 	{
 		if (vars.suppr_type == -1) {
-			if (vars.suppr_nodes.empty()) { suppress_inhibition(synaptic_weights, vars.suppr_lv); }
-			else { suppress_inhibition_of_selected(synaptic_weights, inh_links, vars); }
+			if (vars.suppr_nodes.empty()) {
+				suppress_inhibition(synaptic_weights, vars.suppr_lv);
+			} else {
+				suppress_inhibition_of_selected(synaptic_weights, inh_links, vars);
+			}
 		} else if (vars.suppr_type == 1) {
-			if (vars.suppr_nodes.empty()) { suppress_excitation(synaptic_weights, vars.suppr_lv); }
-			else { suppress_excitation_of_selected(synaptic_weights, exc_links, vars); }
+			if (vars.suppr_nodes.empty()) {
+				suppress_excitation(synaptic_weights, vars.suppr_lv);
+			} else {
+				suppress_excitation_of_selected(synaptic_weights, exc_links, vars);
+			}
 		} else {
 			return throw_error("coding_error", "unexpected value for 'vars.suppressed_link_type'");
 		}
 	}
 
 	create_quick_link_ref(synaptic_weights, inh_links, exc_links);
+    trunc_step_inh = (int)(vars.trunc_t_inh/vars.dt);
+    trunc_step_exc = (int)(vars.trunc_t_exc/vars.dt);
+	setup_hash_table_exp(HASHTABLE_EXP_INH, HASHTABLE_EXP_EXC, trunc_step_inh, trunc_step_exc);
 
 	ofstream ofs_memp;
 	if (vars.expoTimeSeri)
@@ -261,28 +284,28 @@ int main(int argc, char** argv)
 	}
 
 	outlog << "[Initialization] completed in " << timer.stopwatch_lap()/1000 << " s\n\n";
-
 	display_settings(vars);
-
 	outlog << "[Computation] starts\n";
 
-	TIMESERI_RESERVE_SIZE = ((int)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
+	TIMESERI_RESERVE_SIZE = ((size_t)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
 	expo_memp.reserve(TIMESERI_RESERVE_SIZE);
 	if (vars.expoTimeSeri && (continuation == -1))
 	{
-		for (int i = 0; i < vars.mat_size; i++) { expo_memp.push_back(membrane_potential[i]); }
+		for (int i = 0; i < vars.mat_size; i++) {
+			expo_memp.push_back(membrane_potential[i]);
+		}
 	}
 
-	// Main calculation loop
-	while (now_t < vars.Tn)
+	/* Main calculation loop */
+	while (now_step <= total_step)
 	{
-		now_t += vars.dt;
+		now_step++;
 
 		for (int node = 0; node < vars.mat_size; node++)
 		{
 			noise = vars.sigma * norm_dist(random_generator);
 
-			memp_temp = membrane_potential[node];   // so that the other variables take
+			memp_temp = membrane_potential[node];	// so that the other variables take
 													// the membrane potential of the previous step
 			membrane_potential[node] += (
 				(0.04 * membrane_potential[node] * membrane_potential[node]) + (5 * membrane_potential[node])
@@ -307,28 +330,29 @@ int main(int argc, char** argv)
 					membrane_potential[node] = vars.c_exc;
 					recovery_variable[node] += vars.d_exc;
 				}
-				spike_timestamps[node].push_back(now_t);
+				spike_timesteps[node].push_back(now_step);
+				spike_timestamps[node].push_back((double)now_step*vars.dt);
 			}
 
-            conductance_inh = 0;
-            for (auto &in_inh : inh_links[node]) {
-                spike_sum = 0;
-				for (int spk = spike_timestamps[in_inh].size()-1; spk >= 0; spk--) {
-					diff_t = now_t - spike_timestamps[in_inh][spk];
-					if (diff_t < vars.trunc_t_inh) {
-						spike_sum += exp(-diff_t / vars.tau_inh);
+			conductance_inh = 0;
+			for (auto &in_inh : inh_links[node]) {
+				spike_sum = 0;
+				for (int spk = spike_timesteps[in_inh].size()-1; spk >= 0; spk--) {
+					diff_step = now_step - spike_timesteps[in_inh][spk];
+					if (diff_step < trunc_step_inh) {
+						spike_sum += HASHTABLE_EXP_INH[diff_step];
 					} else { break; }
 				}
-                conductance_inh -= (synaptic_weights[node][in_inh] * spike_sum);
-            }
+				conductance_inh -= (synaptic_weights[node][in_inh] * spike_sum);
+			}
 
 			conductance_exc = 0;
 			for (auto &in_exc : exc_links[node]) {
 				spike_sum = 0;
-				for (int spk = spike_timestamps[in_exc].size()-1; spk >= 0; spk--) {
-					diff_t = now_t - spike_timestamps[in_exc][spk];
-					if (diff_t < vars.trunc_t_exc) {
-						spike_sum += exp(-diff_t / vars.tau_exc);
+				for (int spk = spike_timesteps[in_exc].size()-1; spk >= 0; spk--) {
+					diff_step = now_step - spike_timesteps[in_exc][spk];
+					if (diff_step < trunc_step_exc) {
+						spike_sum += HASHTABLE_EXP_EXC[diff_step];
 					} else { break; }
 				}
 				conductance_exc += (synaptic_weights[node][in_exc] * spike_sum);
@@ -352,12 +376,12 @@ int main(int argc, char** argv)
 	}
 
 	outlog << "[Computation] completed in " << timer.stopwatch_lap()/1000 << " s\n\n";
-
 	outlog << "[Exportation] starts\n";
 
 	export_info(continuation, timer.stopwatch_elapsed_t()/1000, vars);
 	export_cont(continuation, membrane_potential, recovery_variable, synaptic_current, vars);
 	export_spkt(spike_timestamps, vars.outfile_spkt);
+	export_spks(spike_timesteps, vars.outfile_spks);
 
 	/* Export time series data for all nodes (for <TIMESERIES_BUFF) */
 	if (vars.expoTimeSeri) {
@@ -372,7 +396,6 @@ int main(int argc, char** argv)
 	if (ofs_memp.is_open()) { ofs_memp.close(); }
 
 	outlog << "[Exportation] completed in " << timer.stopwatch_lap()/1000 << " s\n\n";
-
 	outlog << "COMPLETED :)" << endl;
 
 	return EXIT_SUCCESS;
@@ -471,6 +494,7 @@ void set_io_path(Variables &vars)
 	vars.infile_vars  = vars.infile_path / vars.infile_vars;
 	vars.outfile_info = vars.outfile_path / vars.outfile_info;
 	vars.outfile_spkt = vars.outfile_path / vars.outfile_spkt;
+	vars.outfile_spks = vars.outfile_path / vars.outfile_spks;
 	vars.outfile_memp = vars.outfile_path / vars.outfile_memp;
 	vars.outfile_curr = vars.outfile_path / vars.outfile_curr;
 	vars.outfile_recv = vars.outfile_path / vars.outfile_recv;
@@ -479,36 +503,49 @@ void set_io_path(Variables &vars)
 
 bool check_file_existance(Variables &vars)
 {
-	ifstream fs_info(vars.outfile_info);
-	bool isInfoExist = fs_info.good();
-	ifstream fs_spkt(vars.outfile_spkt);
-	bool isSpktExist = fs_spkt.good();
-	ifstream fs_curr(vars.outfile_curr);
-	bool isCurrExist = fs_curr.good();
-	ifstream fs_memp(vars.outfile_memp);
-	bool isMempExist = fs_memp.good();
-	ifstream fs_recv(vars.outfile_recv);
-	bool isRecvExist = fs_recv.good();
-	ifstream fs_cont(vars.outfile_cont);
-	bool isContExist = fs_cont.good();
+	ifstream ifs;
+	ifs.open(vars.outfile_info);
+	bool infoExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_spkt);
+	bool spktExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_spks);
+	bool spksExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_curr);
+	bool currExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_memp);
+	bool mempExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_recv);
+	bool recvExist = ifs.good();
+	ifs.close();
+	ifs.open(vars.outfile_cont);
+	bool contExist = ifs.good();
+	ifs.close();
 
-	if (isInfoExist||isSpktExist||isCurrExist||isMempExist||isRecvExist||isContExist) { return true; }
-	else { return false; }
+	return (
+		infoExist || spktExist || spksExist || currExist || 
+		mempExist || recvExist || contExist
+	);
 }
 
 void display_settings(Variables &vars)
 {
 	outlog << "- Network: " << vars.infile_adjm << '\n'
-		   << "- T: " << vars.Tn << " ms - dt: " << vars.dt << " ms\n"
+		   << "- T:  " << vars.Tn << " ms\n"
+		   << "- dt: " << vars.dt << " ms\n"
 		   << "- strength of noise (sigma): " << vars.sigma << '\n'
-		   << "- seed to random noise generation: " << vars.rand_seed << '\n';
+		   << "- seed to random noise gen:  " << vars.rand_seed << '\n';
 	if (vars.suppr_lv != 0) {
-		outlog << "- suppression level: " << vars.suppr_lv << '\n';
-		outlog << "- suppressed link type: ";
+		outlog << "- suppression level:    " << vars.suppr_lv << '\n'
+			   << "- suppressed link type: ";
 		if (vars.suppr_type == -1) { outlog << "inh\n"; }
 		else { outlog << "exc\n"; }
 	}
-	outlog << "- export time series: ";
+	outlog << "- export time series:   ";
 	if (vars.expoTimeSeri == true) { outlog << "yes\n\n"; }
 	else { outlog << "no\n\n"; }
 }
@@ -588,7 +625,7 @@ const int import_adjm(vector<vector<double>> &synaptic_weights, Variables &vars)
 	vector<vector<double>> adjm_temp;
 	vector<double> row_buf;
 	string line, elem;
-	path adjm_path = current_path() / vars.inadjm_path / vars.infile_adjm;
+	path adjm_path = fs::current_path() / vars.inadjm_path / vars.infile_adjm;
 	ifstream ifs(adjm_path);
 	if (ifs.is_open()) {
 		if (vars.mat_format == "nonzero") {
@@ -741,6 +778,24 @@ const int import_prev_spkt(vector<vector<double>> &spkt, path &outfile_spkt)
 	return EXIT_SUCCESS;
 }
 
+const int import_prev_spks(vector<vector<int>> &spks, path &outfile_spks)
+{
+	vector<int> row_buf;
+	string line, elem;
+	ifstream ifs(outfile_spks);
+	if (ifs.is_open()) {
+		while(getline(ifs, line, '\n')) {
+			stringstream ss(line);
+			while(getline(ss, elem, '\t')) { row_buf.push_back(stoi(elem)); }
+			row_buf.erase(row_buf.begin()); // delete the number of spikes
+			spks.push_back(row_buf);
+			row_buf.clear();
+		}
+		ifs.close();
+	} else { return throw_error("file_access", outfile_spks); }
+	return EXIT_SUCCESS;
+}
+
 const int classify_neuron_class(vector<int> &neuron_type, vector<vector<double>> &synaptic_weights)
 {
 	for (size_t i = 0; i < synaptic_weights.size(); i++) {
@@ -779,6 +834,19 @@ const int create_quick_link_ref(vector<vector<double>> &synaptic_weights,
 		exc_temp.clear();
 	}
 	return EXIT_SUCCESS;
+}
+
+void setup_hash_table_exp(vector<double> &HASHTABLE_EXP_INH, vector<double> &HASHTABLE_EXP_EXC,
+						  int trunc_step_inh, int trunc_step_exc)
+{
+	HASHTABLE_EXP_INH = vector<double>(trunc_step_inh+1);
+    HASHTABLE_EXP_EXC = vector<double>(trunc_step_exc+1);
+    for (int i = 0; i < trunc_step_inh+1; i++) {
+        HASHTABLE_EXP_INH[i] = exp(-i * vars.dt / vars.tau_inh);
+    }
+    for (int i = 0; i < trunc_step_exc+1; i++) {
+        HASHTABLE_EXP_EXC[i] = exp(-i * vars.dt / vars.tau_exc);
+    }
 }
 
 double calculate_standard_deviation_neg(vector<vector<double>> &synaptic_weights)
@@ -876,22 +944,22 @@ const int export_info(int continuation, float time_elapsed, Variables &vars)
 		if (ofs.is_open()) {
 			char ctime_buffer[30];
 			ctime_s(ctime_buffer, sizeof(ctime_buffer), &computation_complete_time);
-			ofs << code_ver << '\n';
-			ofs << "--------------------------------------------------\n";
-			ofs << "computation finished at: " << ctime_buffer;
-			ofs << "time elapsed: " << time_elapsed << "\n\n";
-			ofs << "[Numerical Settings]" << '\n';
-			ofs << "network file name:\t\t\t" << vars.infile_adjm << '\n';
-			ofs << "number of neurons (N):\t\t" << vars.mat_size << '\n';
-			ofs << "time step size (dt):\t\t" << vars.dt << '\n';
-			ofs << "simulation duration (T):\t" << vars.Tn << '\n';
-			ofs << "random seed number:\t\t\t" << vars.rand_seed << '\n';
-			ofs << "white noise S.D. (sigma):\t" << vars.sigma << '\n';
-			ofs << "matrix parameter (beta):\t" << vars.beta << '\n';
-			ofs << "spike truncation time:\t\t" << vars.trunc_t_inh << " (inh)\n";
-			ofs << "spike truncation time:\t\t" << vars.trunc_t_exc << " (exc)\n\n";
-			ofs << "[Suppression of Synaptic Weights]\n";
-			ofs << "suppression level:\t\t\t" << vars.suppr_lv << '\n';
+			ofs << code_ver << '\n'
+				<< "--------------------------------------------------\n"
+				<< "computation finished at: " << ctime_buffer
+				<< "time elapsed: " << time_elapsed << " s\n\n"
+				<< "[Numerical Settings]" << '\n'
+				<< "network file name:\t\t\t" << vars.infile_adjm << '\n'
+				<< "number of neurons (N):\t\t" << vars.mat_size << '\n'
+				<< "time step size (dt):\t\t" << vars.dt << '\n'
+				<< "simulation duration (T):\t" << vars.Tn << '\n'
+				<< "random seed number:\t\t\t" << vars.rand_seed << '\n'
+				<< "white noise S.D. (sigma):\t" << vars.sigma << '\n'
+				<< "matrix parameter (beta):\t" << vars.beta << '\n'
+				<< "spike truncation time:\t\t" << vars.trunc_t_inh << " (inh)\n"
+				<< "spike truncation time:\t\t" << vars.trunc_t_exc << " (exc)\n\n"
+				<< "[Suppression of Synaptic Weights]\n"
+				<< "suppression level:\t\t\t" << vars.suppr_lv << '\n';
 			string type_of_links = vars.suppr_type == 1 ? "exc" : "inh";
 			ofs << "type of links:\t\t\t\t" << type_of_links << '\n';
 			if (vars.suppr_nodes.empty() == false) {
@@ -899,10 +967,9 @@ const int export_info(int continuation, float time_elapsed, Variables &vars)
 				for (size_t i = 1; i < vars.suppr_nodes.size(); i++) { ofs << ", " << vars.suppr_nodes[i]; }
 				ofs << '\n';
 			}
-			ofs << '\n';
-			ofs << "[Initial Values]\n";
-			ofs << "membrane potential:\t\t\t" << vars.memp_initval << '\n';
-			ofs << "recovery variable:\t\t\t" << vars.recv_initval << '\n' << endl;
+			ofs << "\n[Initial Values]\n"
+				<< "membrane potential:\t\t\t" << vars.memp_initval << '\n'
+				<< "recovery variable:\t\t\t" << vars.recv_initval << '\n' << endl;
 			ofs.close();
 		} else { return EXIT_FAILURE; }
 	} else {
@@ -910,10 +977,10 @@ const int export_info(int continuation, float time_elapsed, Variables &vars)
 		if (ofs.is_open()) {
 			char ctime_buffer[30];
 			ctime_s(ctime_buffer, sizeof(ctime_buffer), &computation_complete_time);
-			ofs << "--------------------------------------------------\n";
-			ofs << "computation finished at: " << ctime_buffer;
-			ofs << "time elapsed: " << time_elapsed << "\n\n";
-			ofs << "extend duration (T) to:\t\t" << vars.Tn << "\n\n";
+			ofs << "--------------------------------------------------\n"
+				<< "computation finished at: " << ctime_buffer
+				<< "time elapsed: " << time_elapsed << "\n\n"
+				<< "extend duration (T) to:\t\t" << vars.Tn << "\n\n";
 			ofs.close();
 		} else { return EXIT_FAILURE; }
 	}
@@ -926,27 +993,26 @@ const int export_cont(int continuation, vector<double> &memp, vector<double> &re
 	ofstream ofs(vars.outfile_cont, ios::trunc);
 	ofs.precision(numeric_limits<double>::max_digits10);
 	if (ofs.is_open()) {
-		ofs << ++continuation << '|';
-		ofs << vars.expoTimeSeri << '\n';
+		ofs << ++continuation << '|' << vars.expoTimeSeri << '\n';
 
-		ofs << vars.mat_size << '|' << vars.dt << '|' << vars.Tn << '|' << vars.rand_seed << '|';
-		ofs << vars.a_inh << '|' << vars.b_inh << '|' << vars.c_inh << '|' << vars.d_inh << '|';
-		ofs << vars.a_exc << '|' << vars.b_exc << '|' << vars.c_exc << '|' << vars.d_exc << '|';
-		ofs << vars.sigma << '|';
-		ofs << vars.thres_v_inh << '|' << vars.thres_v_exc << '|';
-		ofs << vars.tau_inh << '|' << vars.tau_exc << '|';
-		ofs << vars.beta << '|';
-		ofs << vars.memp_initval << '|' << vars.recv_initval << '|';
-		ofs << vars.trunc_t_inh << '|' << vars.trunc_t_exc << '|';
-		ofs << vars.suppr_lv << '|' << vars.suppr_type << '|';
+		ofs << vars.mat_size << '|' << vars.dt << '|' << vars.Tn << '|' << vars.rand_seed << '|'
+			<< vars.a_inh << '|' << vars.b_inh << '|' << vars.c_inh << '|' << vars.d_inh << '|'
+			<< vars.a_exc << '|' << vars.b_exc << '|' << vars.c_exc << '|' << vars.d_exc << '|'
+			<< vars.sigma << '|'
+			<< vars.thres_v_inh << '|' << vars.thres_v_exc << '|'
+			<< vars.tau_inh << '|' << vars.tau_exc << '|'
+			<< vars.beta << '|'
+			<< vars.memp_initval << '|' << vars.recv_initval << '|'
+			<< vars.trunc_t_inh << '|' << vars.trunc_t_exc << '|'
+			<< vars.suppr_lv << '|' << vars.suppr_type << '|';
 		if (vars.suppr_nodes.empty() == false) {
 			ofs << vars.suppr_nodes[0];
 			for (size_t i = 1; i < vars.suppr_nodes.size(); i++) { ofs << ',' << vars.suppr_nodes[i]; }
 		}
-		ofs << '|' << vars.infile_adjm.string() << '|' << vars.mat_format << '|' << vars.delim << '|';
-		ofs << vars.outfile_spkt.string() << '|' << vars.outfile_curr.string() << '|';
-		ofs << vars.outfile_memp.string() << '|' << vars.outfile_recv.string() << '|';
-		ofs << vars.outfile_info.string() << endl;
+		ofs << '|' << vars.infile_adjm.string() << '|' << vars.mat_format << '|' << vars.delim << '|'
+			<< vars.outfile_curr.string() << '|' << vars.outfile_spkt.string() << '|'
+			<< vars.outfile_spks.string() << '|' << vars.outfile_memp.string() << '|'
+			<< vars.outfile_recv.string() << '|' << vars.outfile_info.string() << endl;
 
 		ofs << memp[0];
 		for (int i = 1; i < vars.mat_size; i++) { ofs << '\t' << memp[i]; }
@@ -969,6 +1035,22 @@ const int export_spkt(vector<vector<double>> &spkt, path &outfile)
 		for (size_t row = 1; row < spkt.size(); row++) {
 			ofs << '\n' << spkt[row].size();
 			for (auto &elem : spkt[row]) { ofs << delimiter << elem; }
+		}
+		ofs.close();
+	} else { return EXIT_FAILURE; }
+	return EXIT_SUCCESS;
+}
+
+const int export_spks(vector<vector<int>> &spks, path &outfile)
+{
+	char delimiter = '\t';
+	ofstream ofs(outfile, ios::trunc);
+	if (ofs.is_open()) {
+		ofs << spks[0].size();
+		for (auto &elem : spks[0]) { ofs << delimiter << elem; }
+		for (size_t row = 1; row < spks.size(); row++) {
+			ofs << '\n' << spks[row].size();
+			for (auto &elem : spks[row]) { ofs << delimiter << elem; }
 		}
 		ofs.close();
 	} else { return EXIT_FAILURE; }
