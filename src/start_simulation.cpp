@@ -16,6 +16,7 @@
 // forceOverwrite flag
 
 // Problem:
+// continue mode produce inaccurate results
 // need to develop a version for linux
 // cannot be compiled or executed on department cluster
 
@@ -35,10 +36,9 @@
 #include <tuple>
 #include <cmath>
 #include "myinc.h"
-#define TWO_PI 6.2831853071795864769252866
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.0 | Build 10 | Last Update 18 Mar 2022";
+std::string code_ver = "Version 1.4.1 | Build 11 | Last Update 23 Mar 2022";
 
 using namespace std;
 using namespace myinc;
@@ -91,19 +91,20 @@ struct Variables
 	path outfile_path = "";
 	path outfile_spkt = "spkt.txt";
 	path outfile_info = "info.txt";
-	path outfile_cont = "cont.dat"; // Avoid modifying this file name
+	path outfile_cont = "cont.dat";
 	bool expoTimeSeri = true;
 	path outfile_memp = "memp.dat";
 	path outfile_curr = "curr.dat";
 	path outfile_recv = "recv.dat";
 	path logfile	  = "";
 	bool forceOverwrt = false;
+	// Avoid modifying these file names
 
 	// Other Settings
-	size_t TIMESERIES_BUFF = 150000000; // infinity: numeric_limits<int>::max()
-	int	PRECISION_DIGIT	= numeric_limits<float>::max_digits10; // use single floating point precision
-	// int PRECISION_DIGIT = numeric_limits<double>::max_digits10; // use double floating point precision
-	double prec       = pow(10, PRECISION_DIGIT);
+	size_t	TIMESERIES_BUFF	= 150000000; // for infinity: numeric_limits<int>::max()
+	int		PRECISION_DIGIT	= numeric_limits<float>::max_digits10; // use SINGLE floating point precision for time series output
+	// int PRECISION_DIGIT = numeric_limits<double>::max_digits10; // use DOUBLE floating point precision for time series output
+	double	prec			= pow(10, PRECISION_DIGIT);
 } vars;
 
 const int parser(int, char**, const char*, Variables&);
@@ -147,12 +148,12 @@ int main(int argc, char** argv)
 	timer.stopwatch_begin();		
 
 	int mode = 0;           // 0: overwrite mode | 1: continue mode
-	int continuation;       // count the number of times of continuation
+	int continuation = -1;	// count the number of times of continuation
 
 	mt19937 random_generator;
 	normal_distribution<double> norm_dist(0, 1);
 
-	int reserve_size;
+	int TIMESERI_RESERVE_SIZE;
 	double now_t, diff_t, noise, memp_temp, spike_sum;
 	double conductance_inh, conductance_exc;
 	// `inh_links[i][j]` stores the j-th inhibitory incoming link for node i (i, j starts from 0)
@@ -240,10 +241,10 @@ int main(int argc, char** argv)
 	if (vars.suppr_lv != 0)
 	{
 		if (vars.suppr_type == -1) {
-			if (vars.suppr_nodes.empty() == true) { suppress_inhibition(synaptic_weights, vars.suppr_lv); }
+			if (vars.suppr_nodes.empty()) { suppress_inhibition(synaptic_weights, vars.suppr_lv); }
 			else { suppress_inhibition_of_selected(synaptic_weights, inh_links, vars); }
 		} else if (vars.suppr_type == 1) {
-			if (vars.suppr_nodes.empty() == true) { suppress_excitation(synaptic_weights, vars.suppr_lv); }
+			if (vars.suppr_nodes.empty()) { suppress_excitation(synaptic_weights, vars.suppr_lv); }
 			else { suppress_excitation_of_selected(synaptic_weights, exc_links, vars); }
 		} else {
 			return throw_error("coding_error", "unexpected value for 'vars.suppressed_link_type'");
@@ -259,15 +260,15 @@ int main(int argc, char** argv)
 		if (!ofs_memp.is_open()) { return throw_error("file_access", vars.outfile_memp); }
 	}
 
-	outlog << "[Initialization] completed in " << timer.stopwatch_lap()/1000 << " s\n";
+	outlog << "[Initialization] completed in " << timer.stopwatch_lap()/1000 << " s\n\n";
 
 	display_settings(vars);
 
-	outlog << "\n[Computation] starts\n";
+	outlog << "[Computation] starts\n";
 
-	reserve_size = ((int)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
-	expo_memp.reserve(reserve_size);
-	if (vars.expoTimeSeri)
+	TIMESERI_RESERVE_SIZE = ((int)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
+	expo_memp.reserve(TIMESERI_RESERVE_SIZE);
+	if (vars.expoTimeSeri && (continuation == -1))
 	{
 		for (int i = 0; i < vars.mat_size; i++) { expo_memp.push_back(membrane_potential[i]); }
 	}
@@ -364,7 +365,9 @@ int main(int argc, char** argv)
 			if(export_time_series_bin(expo_memp, vars.outfile_memp, mode) == EXIT_FAILURE) {
 				return EXIT_FAILURE;
 			}
-		} else { ofs_memp.write(reinterpret_cast<char*>(&expo_memp[0]), expo_memp.size()*sizeof(float)); }
+		} else {
+			ofs_memp.write(reinterpret_cast<char*>(&expo_memp[0]), expo_memp.size()*sizeof(float));
+		}
 	}
 	if (ofs_memp.is_open()) { ofs_memp.close(); }
 
@@ -495,7 +498,7 @@ bool check_file_existance(Variables &vars)
 
 void display_settings(Variables &vars)
 {
-	outlog << "\n- Network: " << vars.infile_adjm << '\n'
+	outlog << "- Network: " << vars.infile_adjm << '\n'
 		   << "- T: " << vars.Tn << " ms - dt: " << vars.dt << " ms\n"
 		   << "- strength of noise (sigma): " << vars.sigma << '\n'
 		   << "- seed to random noise generation: " << vars.rand_seed << '\n';
@@ -506,8 +509,8 @@ void display_settings(Variables &vars)
 		else { outlog << "exc\n"; }
 	}
 	outlog << "- export time series: ";
-	if (vars.expoTimeSeri == true) { outlog << "yes\n"; }
-	else { outlog << "no\n"; }
+	if (vars.expoTimeSeri == true) { outlog << "yes\n\n"; }
+	else { outlog << "no\n\n"; }
 }
 
 string remove_whitespace(string &str)
@@ -658,21 +661,23 @@ int import_prev_vars(vector<double> &memp, vector<double> &recv, vector<double> 
 			prev_vars.push_back(val); // import all variables and parameters from previous calculation, e.g., dt, sigma, etc.
 		}
 		getline(ifs, line, '\n');
-		stringstream memp_stream(line);
-		while (getline(memp_stream, val, '\t')) {
+		ss.clear();
+		ss.str(line);
+		while (getline(ss, val, '\t')) {
 			memp.push_back(stod(val)); // import membrane potentials of all neurons at the last time step from previous calculation
 		}
 		getline(ifs, line, '\n');
-		stringstream recv_stream(line);
-		while (getline(recv_stream, val, '\t')) {
+		ss.clear();
+		ss.str(line);
+		while (getline(ss, val, '\t')) {
 			recv.push_back(stod(val)); // import recovery variables of all neurons at the last time step from previous calculation
 		}
 		getline(ifs, line, '\n');
-		stringstream curr_stream(line);
-		while (getline(curr_stream, val, '\t')) {
+		ss.clear();
+		ss.str(line);
+		while (getline(ss, val, '\t')) {
 			curr.push_back(stod(val)); // import synaptic current of all neurons at the last time step from previous calculation
 		}
-		curr_stream.str(string());
 		ifs.close();
 	} else {
 		throw_error("file_access", vars.outfile_cont);
