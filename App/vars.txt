@@ -1,0 +1,52 @@
+[Caution: do not modify anything except the values after the equal signs]
+
+[Data Input]
+file name of synaptic weight matrix = DIV66_gji
+matrix format (full/nonzero)#       = nonzero
+matrix size (for nonzero format)    = 4095
+matrix delimiter (tab/space/;/...)	= space
+
+[Numerical Settings]
+time step size              [dt]	= 0.05
+simulation duration          [T]	= 10000
+white noise strength     [sigma]	= 3
+matrix adoption parameter [beta]	= 2
+seed to random number generation	= 0
+spiking truncation time (ms)		= auto
+(auto: calculate from parameters)
+
+[Suppression of Synaptic Weights]
+suppression level                   = 0
+type of links (inh/exc)             = inh
+neurons to be suppressed            =
+(blank: suppress all neuron nodes)
+(this option allows incoming links
+ of individual neurons to be
+ suppressed, index starts from 1)
+
+[Parameters for Izhikevich's Neuron Model]
+a (inh) = 0.1
+b (inh) = 0.2
+c (inh) = -65
+d (inh) = 2
+a (exc) = 0.02
+b (exc) = 0.2
+c (exc) = -65
+d (exc) = 8
+
+[Parameters for Synapse Model]
+threshold potential (inh) [V_I]		= -80
+threshold potential (exc) [V_E]		= 0
+decay time constant (inh) [tau]		= 6
+decay time constant (exc) [tau] 	= 5
+
+[Initial Values]
+membrane potential (mV)         	= -65
+recovery variable               	= 8
+
+[Data Output]
+export time series of variables		= false
+(membrane potential)
+
+#full:      the data file stores a full size NxN matrix
+#nonzero:   the data file stores only the nonzero elements with format (j i gji)
