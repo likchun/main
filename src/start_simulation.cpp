@@ -2,8 +2,8 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.2(12)
- * @date 2022-03-17
+ * @version 1.4.3(13)
+ * @date 2022-03-31
  * 
  * @copyright
  * 
@@ -16,8 +16,6 @@
 // forceOverwrite flag
 
 // Problem:
-// continue mode produce inaccurate results
-// need to develop a version for linux
 // cannot be compiled or executed on department cluster
 
 
@@ -38,7 +36,7 @@
 #include "myinc.h"
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.2 | Build 12 | Last Update 28 Mar 2022";
+std::string code_ver = "Version 1.4.3 | Build 13 | Last Update 31 Mar 2022";
 
 using namespace std;
 using namespace myinc;
@@ -181,8 +179,8 @@ int main(int argc, char** argv)
 			   << "- press ENTER to continue from previous data, or\n"
 			   << "- insert 'overwrite' to replace current data files\n\n"
 			   << "* note1: directory of synaptic weight file should be\n"
-			   << "         specified (by using the flag [-w])\n"
-			   << "         data files\n"
+			   << "         specified (by using the flag [-w]) or in the\n"
+			   << "         same directory as the program\n"
 			   << "* note2: synaptic weight file name should not change\n";
 		getline(cin, user_input);
 		if (user_input.empty()) { mode = 1; }
@@ -241,7 +239,7 @@ int main(int argc, char** argv)
 		if (import_adjm(synaptic_weights, vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
 		// Discard the first (T/dt) random numbers, so that the generation of random number begins properly
 		int waste_step = 0;
-		while (waste_step <= now_step) {
+		while (waste_step < now_step) {
 			waste_step++;
 			for (int node = 0; node < vars.mat_size; node++) {
 				noise = norm_dist(random_generator);
@@ -285,7 +283,7 @@ int main(int argc, char** argv)
 
 	outlog << "[Initialization] completed in " << timer.stopwatch_lap()/1000 << " s\n\n";
 	display_settings(vars);
-	outlog << "[Computation] starts\n";
+	outlog << "[Computation] starts" << endl;
 
 	TIMESERI_RESERVE_SIZE = ((size_t)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
 	expo_memp.reserve(TIMESERI_RESERVE_SIZE);
@@ -296,8 +294,9 @@ int main(int argc, char** argv)
 		}
 	}
 
+
 	/* Main calculation loop */
-	while (now_step <= total_step)
+	while (now_step < total_step)
 	{
 		now_step++;
 
@@ -937,16 +936,13 @@ void suppress_excitation_of_selected(vector<vector<double>> &synaptic_weights,
 
 const int export_info(int continuation, float time_elapsed, Variables &vars)
 {
-	auto end_time = chrono::system_clock::now();
-	time_t computation_complete_time = chrono::system_clock::to_time_t(end_time);
+	auto [time_fmt1, _] = timer.report_time();
 	if (continuation == -1) {
 		ofstream ofs(vars.outfile_info, ios::trunc);
 		if (ofs.is_open()) {
-			char ctime_buffer[30];
-			ctime_s(ctime_buffer, sizeof(ctime_buffer), &computation_complete_time);
 			ofs << code_ver << '\n'
 				<< "--------------------------------------------------\n"
-				<< "computation finished at: " << ctime_buffer
+				<< "computation finished at: " << time_fmt1
 				<< "time elapsed: " << time_elapsed << " s\n\n"
 				<< "[Numerical Settings]" << '\n'
 				<< "network file name:\t\t\t" << vars.infile_adjm << '\n'
@@ -975,10 +971,8 @@ const int export_info(int continuation, float time_elapsed, Variables &vars)
 	} else {
 		ofstream ofs(vars.outfile_info, ios::app);
 		if (ofs.is_open()) {
-			char ctime_buffer[30];
-			ctime_s(ctime_buffer, sizeof(ctime_buffer), &computation_complete_time);
 			ofs << "--------------------------------------------------\n"
-				<< "computation finished at: " << ctime_buffer
+				<< "computation finished at: " << time_fmt1
 				<< "time elapsed: " << time_elapsed << "\n\n"
 				<< "extend duration (T) to:\t\t" << vars.Tn << "\n\n";
 			ofs.close();
@@ -1081,7 +1075,7 @@ const int throw_error(string err_type)
 	} else if (err_type == "matrix_size") {
 		outlog << "\n<InvalidMatrixSize> the input synaptic weights matrix is smaller than 2x2" << endl;
 	} else {
-		outlog << "\n<ERROR> unknown failure [1]" << endl;
+		outlog << "\nunknown failure [1]" << endl;
 	}
 	return EXIT_FAILURE;
 }
