@@ -1,5 +1,11 @@
+!!!CAUTION!!!
+This program cannot be compiled or run on department cluster,
+as it requires a newer version of C++ dependencies
+
+
+
 How to use the program
-======================
+----------------------
 
 0 Optional: compile 'start_simulation.cpp'
   > g++ start_simulation.cpp -o start_simulation.exe -O3 -std=c++20
@@ -15,31 +21,38 @@ How to use the program
 
 
 Output files
-============
+------------
 
 1 spkt
-  - record the number of spikes & spiking timestamps
+  - record the number of spikes & spiking timestamps / spike trains
   - the i-th row corresponds to the spiking data for the i-th neuron node
   - column 1: the number of spikes n(i) of the i-th neuron node
   - column 2 and onwards: n(i) timestamps (in ms)
     at which the spikes occur for the i-th neuron node
 
-2 memp
+2 spks
+  - record the number of spikes & spiking timesteps / spike trains
+  - the i-th row corresponds to the spiking data for the i-th neuron node
+  - column 1: the number of spikes n(i) of the i-th neuron node
+  - column 2 and onwards: n(i) timesteps (in simulation step)
+    at which the spikes occur for the i-th neuron node
+
+3 memp
   - record the time series of the membrane potential
   - a binary file that can be read by a C++ program into a C++ vector
 
-3 info
+4 info
   - record the information of the computation (e.g. T, dt, ...)
 
-4 cont
+5 cont
   - record the information of the computation
   - to be used by the program
 
-5 log file
+6 log file
 
 
 Notes
-=====
+-----
 
 0 Compatibility
   This code is intended to be compiled in C++20 verion.

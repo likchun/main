@@ -395,7 +395,7 @@ namespace myinc
 		// Return current time (in customized format)
 		std::tuple<std::string, std::string> report_time(const char* fmt="%y-%m-%d_%H-%M-%S") {
 			start_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-			ctime_s(ctime_buf1, sizeof(ctime_buf1), &start_t);
+			ctime_buf1 = ctime(&start_t);
 			strftime(ctime_buf2, sizeof(ctime_buf2), fmt, localtime(&start_t));
 			return {std::string(ctime_buf1), std::string(ctime_buf2)};
 		}
@@ -446,7 +446,7 @@ namespace myinc
 		std::chrono::steady_clock::time_point beg, lap_beg, lap_last, pau_beg, pau_fin;
 		bool isActivated, isPaused;
 		double pause_duration, lap_pause_duration;
-		char ctime_buf1[30], ctime_buf2[30];
+		char *ctime_buf1, ctime_buf2[30];
 	} timer;
 }; // namespace myinc
 
