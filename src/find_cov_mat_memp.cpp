@@ -3,8 +3,8 @@
  * @author likchun@outlook.com
  * @brief find the equal-time K(0) and time-lagged K(tau) covariance matrices from potential time series binary file generated from start_simulation.
  * Use the command `find_covariance_matrices.exe -h` to look for help.
- * @version 0.2
- * @date 2022-03-14
+ * @version 0.3
+ * @date 2022-03-31
  * 
  * @note compile with OpenMP [-fopenmp] flag to enable multiprocessing
  * 
