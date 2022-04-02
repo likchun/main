@@ -22,17 +22,17 @@ using namespace std;
 struct Vars
 {
 	/* Settings */
-    int		N			= 4095;
-    double	tau			= 0.1;
-    double	Tn			= 10000;
-    double	dt			= 0.05;
+    int		N		= 4095;
+    double	tau		= 0.1;
+    double	Tn		= 10000;
+    double	dt		= 0.05;
 
-	bool	findK0		= true;
-	bool	findKT		= true;
+	bool	findK0	= true;
+	bool	findKT	= true;
 
-    string	infile		= "spks.txt";
-    string	outf_K0		= "K_0";
-    string	outf_Ktau	= "K_tau";
+    string	infile	= "spks.txt";
+    string	outf_K0	= "K_0";
+    string	outf_KT	= "K_tau";
 } vars;
 
 class Chronometer
@@ -80,12 +80,12 @@ int main()
 
     if (import_spks(spks, vars.infile) == EXIT_FAILURE) { return EXIT_FAILURE; }
 	cout << "Spike trains data read from text file \"" << vars.infile << "\"\n";
-	cout << "Task completed in " << (int)(timer.stopwatch_lap()/1000) << " s\n\n";
+	cout << "Completed in " << (int)(timer.stopwatch_lap()) << " ms\n\n";
 
 	// Calculate equal-time covariance matrix K_ij(0)
-	cout << "Finding equal-time covariance matrix K(0)\n";
 	if (vars.findK0)
 	{
+		cout << "Finding equal-time covariance matrix K(0)\n";
 		#pragma omp parallel for
 		for (int i = 0; i < vars.N; i++) {
 			avg_s[i] = (double)spks[i].size() / total_step;
@@ -113,18 +113,20 @@ int main()
 				cov_mat[i][j] = cov_mat[j][i];
 			}
 		}
+		cout << "K(0) found in " << (int)(timer.stopwatch_lap()) << " ms\n";
 		if (fwrite_dense_matrix(cov_mat, vars.outf_K0) == EXIT_SUCCESS) {
-			cout << "K(0) is written into file \"" << vars.outf_K0 << "\"\n";
+			cout << "K(0) written into file \"" << vars.outf_K0 << "\"\n\n";
 		} else { return EXIT_FAILURE; }
-		vector<vector<double>>(vars.N, vector<double>(vars.N, 0)).swap(cov_mat);
-		cout << "Task completed in " << (int)(timer.stopwatch_lap()/1000) << " s\n\n";
 	}
+	vector<vector<double>>(vars.N, vector<double>(vars.N, 0)).swap(cov_mat);
+	timer.stopwatch_lap();
 
 	// Calculate time-lagged covariance matrix K_ij(tau)
-	cout << "Finding time-lagged covariance matrix K(tau)\n";
 	if (vars.findKT)
 	{
+		cout << "Finding time-lagged covariance matrix K(tau), with tau=" << vars.tau << "\n";
 		spks_lag = spks;
+		#pragma omp parallel for
 		for (int i = 0; i < vars.N; i++) {
 			for (auto &s : spks_lag[i]) {
 				s += lag_s;
@@ -134,22 +136,22 @@ int main()
 		for (int i = 0; i < vars.N; i++) {
 			for (int j = 0; j < vars.N; j++) {
 				sum_s_ij = 0;
-				if (spks_lag[i].size() < spks[j].size()) {
-					for (auto &spk : spks_lag[i]) {
-						sum_s_ij += binary_search(spks[j].begin(), spks[j].end(), spk);
+				if (spks_lag[j].size() < spks[i].size()) {
+					for (auto &spk : spks_lag[j]) {
+						sum_s_ij += binary_search(spks[i].begin(), spks[i].end(), spk);
 					}
 				} else {
-					for (auto &spk : spks[j]) {
-						sum_s_ij += binary_search(spks_lag[i].begin(), spks_lag[i].end(), spk);
+					for (auto &spk : spks[i]) {
+						sum_s_ij += binary_search(spks_lag[j].begin(), spks_lag[j].end(), spk);
 					}
 				}
-				cov_mat[i][j] = sum_s_ij/total_step - avg_s[i]*avg_s[j];
+				cov_mat[i][j] = sum_s_ij/(total_step-lag_s) - avg_s[i]*avg_s[j];
 			}
 		}
-		if (fwrite_dense_matrix(cov_mat, vars.outf_Ktau) == EXIT_SUCCESS) {
-			cout << "K(tau) is written into file \"" << vars.outf_Ktau << "\"\n";
+		cout << "K(tau) found in " << (int)(timer.stopwatch_lap()) << " ms\n";
+		if (fwrite_dense_matrix(cov_mat, vars.outf_KT) == EXIT_SUCCESS) {
+			cout << "K(tau) written into file \"" << vars.outf_KT << "\"\n\n";
 		} else { return EXIT_FAILURE; }
-		cout << "Task completed in " << (int)(timer.stopwatch_lap()/1000) << " s\n" << endl;
 	}
 
 	return EXIT_SUCCESS;

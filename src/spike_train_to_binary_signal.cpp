@@ -43,7 +43,8 @@ int main()
 		}
 	}
 
-	int bin_signal, now_step = 0, total_step = (int)(vars.Tn/vars.dt);
+	signed char bin_signal;
+	int now_step = 0, total_step = (int)(vars.Tn/vars.dt);
 	ofstream ofs(vars.outfile, ios::out | ios::binary);
 
 	cout << "Writing spiking time series\n";
