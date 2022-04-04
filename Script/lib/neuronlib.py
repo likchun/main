@@ -1898,6 +1898,8 @@ class Grapher:
         self.legend     = False
         self.textbox    = ''
 
+        self.ylogscale  = False
+
     def add_data(self, xdata, ydata):
         self.xdata = np.array(xdata)
         self.ydata = np.array(ydata)
@@ -1907,6 +1909,7 @@ class Grapher:
         self.ax = ax
 
     def create_fig(self, figsize=(7, 7), dpi=150):
+        self.__init__()
         self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi)
 
     def stylize_plot(self, **kwargs):
@@ -1942,8 +1945,8 @@ class Grapher:
         ----------
         plotlabel : str
             plot label to be displayed in legend
-        axislabel : tuple of str
-            x-axis and y-axis label, e.g., `('time', 'voltage')`
+        axislabel : list of str
+            x-axis and y-axis label, e.g., `['time', 'voltage']`
         xlabel : str
             x-axis label
         ylabel : str
@@ -1955,13 +1958,16 @@ class Grapher:
         """
         for key, value in kwargs.items():
             if key == 'plotlabel': self.plotlabel = value
-            if key == 'axislabel': self.axislabel = value
-            if key == 'xlabel': self.axislabel[0] = value
-            if key == 'ylabel': self.axislabel[1] = value
+            if key == 'axislabel':
+                self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
+                self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
+            if key == 'xlabel': self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
+            if key == 'ylabel': self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
             if key == 'legend': self.legend = value
             if key == 'textbox': self.textbox = value
 
-    def plot(self):
+    def plot(self, ylogscale=False):
+        if ylogscale: self.ax.set_yscale('log')
         self.ax.plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
                      ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
 
@@ -1974,10 +1980,11 @@ class Grapher:
             self.ax.text(0.00001, 1.05, self.textbox, fontsize=10, verticalalignment='top',
                          transform=self.ax.transAxes, bbox=props)
 
-    def save_fig(self, filename: str, label='', ext='png', path=''):
+    def save_fig(self, filename: str, label='', ext='png', path='', tight_layout=True):
         self._set_fmt()
         if label != '': filename += '_' + label
         if ext != '': filename += '.' + ext
+        if tight_layout: plt.tight_layout()
         self.fig.savefig(os.path.join(path, filename))
 
     def show_fig(self):
@@ -1988,7 +1995,59 @@ class Grapher:
         self._set_fmt()
         return self.fig, self.ax
 
-class GraphMatrixRelation(Grapher):
+class GraphDataRelation(Grapher):
+
+    def __init__(self) -> None:
+        """Graph the relation between two matrices.
+
+        Step:
+        1. `creat_fig()` or `import_fig()`
+        2. `add_data()`
+        3. (optional)
+        4. `plot()`
+        5. `save_fig()` or `return_fig()` or `show_fig()`
+        
+        Optional:
+        - `stylize_plot()`
+        - `label_plot()`
+        - `draw_xyline()`
+        - `fit_linear()`
+
+        Example:
+        >>> A = [[1, 3], [2, 2]]
+        ... B = [[2, 3], [1, 4]]
+        >>> g = GraphMatrixRelation()
+        ... g.create_fig()
+        ... g.add_data(A, B)
+        ... coef = g.fit_linear()
+        ... g.plot()
+        ... g.show_fig()
+        """
+        super().__init__()
+        self.m           = 'o'
+        self.ms          = 1.5
+        self.ls          = 'none'
+
+    def add_data(self, xdata, ydata):
+        self.x = np.array(xdata).flatten()
+        self.y = np.array(ydata).flatten()
+
+    def draw_xyline(self, color='k'):
+        min_elem = min(np.amin(self.x), np.amin(self.y))
+        max_elem = max(np.amax(self.x), np.amax(self.y))
+        elem_range = np.linspace(min_elem, max_elem)
+        self.ax.plot(elem_range, elem_range, c=color, ls='--', lw=1, zorder=1)
+
+    def fit_linear(self, color='darkorange') -> tuple:
+        min_elem = min(np.amin(self.x), np.amin(self.y))
+        max_elem = max(np.amax(self.x), np.amax(self.y))
+        elem_range = np.linspace(min_elem, max_elem)
+        coef = np.polyfit(self.x, self.y, 1)  # slope = coef[0], y-intercept = coef[1]
+        poly1d_fn = np.poly1d(coef)
+        self.ax.plot(elem_range, poly1d_fn(elem_range), c=color, ls='-.', lw=1.25, zorder=3)
+        return coef
+
+class GraphMatrixRelation(GraphDataRelation):
 
     def __init__(self) -> None:
         """Graph the relation between two matrices.
@@ -2019,9 +2078,7 @@ class GraphMatrixRelation(Grapher):
         super().__init__()
         self.onlyOffDiag = False
         self.onlyDiag    = False
-        self.m           = 'o'
-        self.ms          = 2
-        self.ls          = 'none'
+        self.ms          = 1
 
     def add_data(self, xdata, ydata, diag=True, offdiag=True):
         self.xdata = np.array(xdata)
@@ -2041,21 +2098,6 @@ class GraphMatrixRelation(Grapher):
             self.y = np.diag(self.ydata)
             self.axislabel[0] += ' (diagonals)'
             self.axislabel[1] += ' (diagonals)'
-
-    def draw_xyline(self, color='k'):
-        min_elem = min(np.amin(self.x), np.amin(self.y))
-        max_elem = max(np.amax(self.x), np.amax(self.y))
-        elem_range = np.linspace(min_elem, max_elem)
-        self.ax.plot(elem_range, elem_range, c=color, ls='--', lw=1, zorder=1)
-
-    def fit_linear(self, color='darkorange') -> tuple:
-        min_elem = min(np.amin(self.x), np.amin(self.y))
-        max_elem = max(np.amax(self.x), np.amax(self.y))
-        elem_range = np.linspace(min_elem, max_elem)
-        coef = np.polyfit(self.x, self.y, 1)  # slope = coef[0], y-intercept = coef[1]
-        poly1d_fn = np.poly1d(coef)
-        self.ax.plot(elem_range, poly1d_fn(elem_range), c=color, ls='-.', lw=1.25, zorder=3)
-        return coef
 
     def _rm_diag(self, A: np.ndarray) -> np.ndarray:
         if A.shape[0] == A.shape[1]:
@@ -2361,12 +2403,12 @@ def fread_dense_matrix(filename: str, delim='\t')->np.ndarray:
     Returns
     -------
     np.ndarray
-        the matrix stored in the file
+        the matrix in the file
     """
     try:
         return np.array(list(csv.reader(open(filename, 'r'), delimiter=delim))).astype(float)
     except FileNotFoundError:
-        err = 'FileNotFoundError: matrix file [{}] cannot be found.'.format(filename)
+        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
         print(err); exit(1)
 
 def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->np.ndarray:
@@ -2388,7 +2430,7 @@ def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->n
     Returns
     -------
     numpy.ndarray
-        the matrix stores in the file
+        the matrix in the file
     """
     if type(A_size) == int: A_size = (A_size, A_size)
     try:
@@ -2403,10 +2445,36 @@ def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->n
             for item in content: matrix[item[1]][item[0]] = item[2]
             return np.array(matrix).astype(float)
     except FileNotFoundError:
-        err = 'FileNotFoundError: matrix file [{}] cannot be found.'.format(filename)
+        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
         print(err); exit(1)
 
-def fwrite_dense_matrix(A: iter, filename: str, delim='\t'):
+def fread_ragged_2darray(filename: str, delim='\t', dtype=float) -> np.ndarray:
+    """Read a 2d array with varying row length from a file.
+
+    Parameters
+    ----------
+    filename : str
+        name or path of the file
+    delim : str or chr, optional
+        delimiter of the file, by default `'\\t'`
+    dtype : datatype, optional
+        datatype of elements, by default `float`
+
+    Returns
+    -------
+    np.ndarray
+        the 2d ragged array in the file
+    """
+    try:
+        return np.array([np.array(
+            list(filter(None, x))).astype(dtype) for x in
+                list(csv.reader(open(filename, 'r'), delimiter=delim)
+        )], dtype=object)
+    except FileNotFoundError:
+        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
+        print(err); exit(1)
+
+def fwrite_dense_matrix(A: iter, filename: str, delim='\t', dtype=float):
     """Write a matrix into a file.
     
     Write the full matrix, that is, every element including 0. File size will be large.
@@ -2419,21 +2487,31 @@ def fwrite_dense_matrix(A: iter, filename: str, delim='\t'):
         name or path of the file
     delim : str, optional
         delimiter of the output matrix file, by default `'\\t'`
+    dtype : datatype, optional
+        datatype of elements, by default `float`
     """
     try:
         with open(filename, 'w') as fp:
-            for row in A:
-                if row[0] == 0: fp.write('{:.0f}'.format(row[0])) # To reduce file size
-                else:           fp.write( '{:.8}'.format(row[0]))
-                for element in row[1:]:
-                    if element == 0:    fp.write('{}{:.0f}'.format(delim, element)) # To reduce file size
-                    else:               fp.write( '{}{:.8}'.format(delim, element))
-                fp.write('\n')
+            if dtype == int:
+                for row in A:
+                    if row[0] == 0: fp.write('{:d}'.format(row[0])) # To reduce file size
+                    else:           fp.write( '{:d}'.format(row[0]))
+                    for element in row[1:]:
+                        if element == 0:    fp.write('{}{:d}'.format(delim, element)) # To reduce file size
+                        else:               fp.write( '{}{:d}'.format(delim, element))
+                    fp.write('\n')      
+            else:
+                    if row[0] == 0: fp.write('{:.0f}'.format(row[0])) # To reduce file size
+                    else:           fp.write( '{:.8}'.format(row[0]))
+                    for element in row[1:]:
+                        if element == 0:    fp.write('{}{:.0f}'.format(delim, element)) # To reduce file size
+                        else:               fp.write( '{}{:.8}'.format(delim, element))
+                    fp.write('\n')
     except FileNotFoundError:
-        err = 'FileNotFoundError: cannot write to file [{}], e.g., the path to the directory does not exist.'.format(filename)
+        err = 'FileNotFoundError: cannot write to file "{}", e.g., the path to the directory does not exist.'.format(filename)
         print(err); exit(1)
 
-def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1):
+def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1, dtype=float):
     """Write a matrix into a file.
     
     Write only nonzero elements into each row with format: index j, index i, value (separated by `delim`).
@@ -2449,15 +2527,23 @@ def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1):
         delimiter of the output matrix file, by default 'whitespace'
     start_idx : int, optional
         the index i and j start from, usually it's 0 or 1, by default 1
+    dtype : datatype, optional
+        datatype of elements, by default `float`
     """
     try:
         with open(filename, 'w') as fp:
-            for i in range(len(A)):
-                for j in range(len(A[i])):
-                    if A[i][j] != 0:
-                        fp.write('{:d}{}{:d}{}{:f}\n'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
+            if dtype == int:
+                for i in range(len(A)):
+                    for j in range(len(A[i])):
+                        if A[i][j] != 0:
+                            fp.write('{:d}{}{:d}{}{:d}\n'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
+            else:
+                for i in range(len(A)):
+                    for j in range(len(A[i])):
+                        if A[i][j] != 0:
+                            fp.write('{:d}{}{:d}{}{:f}\n'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
     except FileNotFoundError:
-        err = 'FileNotFoundError: cannot write to file [{}], e.g., the path to the directory does not exist.'.format(filename)
+        err = 'FileNotFoundError: cannot write to file "{}", e.g., the path to the directory does not exist.'.format(filename)
         print(err); exit(1)
 
 def remove_diag(A: np.ndarray)->np.ndarray:
