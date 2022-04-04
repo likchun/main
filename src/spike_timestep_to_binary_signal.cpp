@@ -1,7 +1,7 @@
 /**
- * @file spike_train_to_binary_signal.cpp
+ * @file spike_timestep_to_binary_signal.cpp
  * @author likchun@outlook.com
- * @brief covert spike trains data "spks.txt" to binary digital time series
+ * @brief covert spike timestep data "spks.txt" to binary digital time series
  * @version 0.1
  * @date 2022-04-02
  * 
