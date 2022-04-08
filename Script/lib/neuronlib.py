@@ -32,8 +32,7 @@ import csv
 import math
 import numpy as np
 from scipy import linalg, stats
-import matplotlib.pyplot as plt
-import matplotlib.collections as mcol
+from matplotlib import pyplot as plt, ticker as tck, collections as mcol
 from lib.cppvector import Vector_fl
 
 
@@ -1898,11 +1897,14 @@ class Grapher:
         self.legend     = False
         self.textbox    = ''
 
+        self.xlim       = (None, None)
+        self.ylim       = (None, None)
+        self.xlogscale  = False
         self.ylogscale  = False
-
-    def add_data(self, xdata, ydata):
-        self.xdata = np.array(xdata)
-        self.ydata = np.array(ydata)
+        self.xsymlogscale   = False
+        self.xlinthresh = 1
+        self.ysymlogscale   = False
+        self.ylinthresh = 1
 
     def import_fig(self, ax, fig=None):
         self.fig = fig
@@ -1932,11 +1934,12 @@ class Grapher:
         """
         for key, value in kwargs.items():
             if key == 'color' or key == 'c': self.c = value
-            if key == 'marker' or key == 'm': self.m = value
-            if key == 'markersize' or key == 'ms': self.ms = value
-            if key == 'linestyle' or key == 'ls': self.ls = value
-            if key == 'lineweight' or key == 'lw': self.lw = value
-            if key == 'grid': self.grid = value
+            elif key == 'marker' or key == 'm': self.m = value
+            elif key == 'markersize' or key == 'ms': self.ms = value
+            elif key == 'linestyle' or key == 'ls': self.ls = value
+            elif key == 'lineweight' or key == 'lw': self.lw = value
+            elif key == 'grid': self.grid = value
+            else: print('The optional argument: [{}] is not supported'.format(key))
 
     def label_plot(self, **kwargs):
         """Label matplotlib axes.
@@ -1958,16 +1961,28 @@ class Grapher:
         """
         for key, value in kwargs.items():
             if key == 'plotlabel': self.plotlabel = value
-            if key == 'axislabel':
+            elif key == 'axislabel':
                 self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
                 self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
-            if key == 'xlabel': self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
-            if key == 'ylabel': self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
-            if key == 'legend': self.legend = value
-            if key == 'textbox': self.textbox = value
+            elif key == 'xlabel': self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
+            elif key == 'ylabel': self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
+            elif key == 'legend': self.legend = value
+            elif key == 'textbox': self.textbox = value
+            else: print('The optional argument: [{}] is not supported'.format(key))
 
-    def plot(self, ylogscale=False):
-        if ylogscale: self.ax.set_yscale('log')
+    def plot(self):
+        # self.ax.tick_params(axis='both', direction='in', which='both')
+        # locmin = tck.LogLocator(base=10.0, subs=(.2,.4,.6,.8), numticks=12)
+        # self.ax.yaxis.set_minor_locator(locmin)
+        # self.ax.yaxis.set_minor_formatter(tck.NullFormatter())
+        # self.ax.yaxis.set_minor_locator(tck.AutoMinorLocator(4))
+        self.ax.minorticks_on()
+        if not all(x is None for x in self.xlim): self.ax.set_xlim(self.xlim)
+        if not all(x is None for x in self.ylim): self.ax.set_ylim(self.ylim)
+        if self.ylogscale: self.ax.set_yscale('log')
+        elif self.ysymlogscale: self.ax.set_yscale('symlog', linthresh=self.ylinthresh)
+        if self.xlogscale: self.ax.set_xscale('log')
+        elif self.xsymlogscale: self.ax.set_xscale('symlog', linthresh=self.xlinthresh)
         self.ax.plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
                      ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
 
@@ -1981,6 +1996,21 @@ class Grapher:
                          transform=self.ax.transAxes, bbox=props)
 
     def save_fig(self, filename: str, label='', ext='png', path='', tight_layout=True):
+        """Save figure into file.
+
+        Parameters
+        ----------
+        filename : str
+            name of the output file
+        label : str, optional
+            label attached at the end of the file name, by default ''
+        ext : str, optional
+            file extension, by default 'png'
+        path : str, optional
+            path to the output file, by default ''
+        tight_layout : bool, optional
+            enable tight layout, by default True
+        """
         self._set_fmt()
         if label != '': filename += '_' + label
         if ext != '': filename += '.' + ext
@@ -2028,7 +2058,42 @@ class GraphDataRelation(Grapher):
         self.ms          = 1.5
         self.ls          = 'none'
 
-    def add_data(self, xdata, ydata):
+    def add_data(self, xdata, ydata, **kwargs):
+        """Add data to be plotted.
+
+        Parameters
+        ----------
+        xdata : np.ndarray
+            data in x-axis
+        ydata : np.ndarray
+            data in y-axis
+        xlim : tuple
+            horizontal plot range, default: fitted to data
+        ylim : tuple
+            vertical plot range, default: fitted to data
+        xlogscale : bool
+            use log scale in x-axis, default: `False`
+        ylogscale : bool
+            use log scale in y-axis, default: `False`
+        xsymlogscale : bool
+            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
+        xlinthresh : float
+            the threshold of linear range when using `xsymlogscale`, default: 1
+        ysymlogscale : bool
+            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
+        ylinthresh : float
+            the threshold of linear range when using `ysymlogscale`, default: 1
+        """
+        for key, value in kwargs.items():
+            if key == 'xlim': self.xlim = value
+            elif key == 'ylim': self.ylim = value
+            elif key == 'xlogscale': self.xlogscale = value
+            elif key == 'ylogscale': self.ylogscale = value
+            elif key == 'xsymlogscale': self.xsymlogscale = value
+            elif key == 'xlinthresh': self.xlinthresh = value
+            elif key == 'ysymlogscale': self.ysymlogscale = value
+            elif key == 'ylinthresh': self.ylinthresh = value
+            else: print('The optional argument: [{}] is not supported'.format(key))
         self.x = np.array(xdata).flatten()
         self.y = np.array(ydata).flatten()
 
@@ -2080,24 +2145,63 @@ class GraphMatrixRelation(GraphDataRelation):
         self.onlyDiag    = False
         self.ms          = 1
 
-    def add_data(self, xdata, ydata, diag=True, offdiag=True):
+    def add_data(self, xdata, ydata, **kwargs):
+        """Add data to be plotted.
+
+        Parameters
+        ----------
+        xdata : np.ndarray
+            data in x-axis
+        ydata : np.ndarray
+            data in y-axis
+        onlyOffDiag : bool
+            show only off-diagonal elements, default: `False`
+        onlyDiag : bool
+            show only diagonal elements, default: `False`
+        xlim : tuple
+            horizontal plot range, default: fitted to data
+        ylim : tuple
+            vertical plot range, default: fitted to data
+        xlogscale : bool
+            use log scale in x-axis, default: `False`
+        ylogscale : bool
+            use log scale in y-axis, default: `False`
+        xsymlogscale : bool
+            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
+        xlinthresh : float
+            the threshold of linear range when using `xsymlogscale`, default: 1
+        ysymlogscale : bool
+            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
+        ylinthresh : float
+            the threshold of linear range when using `ysymlogscale`, default: 1
+        """
+        for key, value in kwargs.items():
+            if key == 'onlyDiag': self.onlyDiag = value
+            elif key == 'onlyOffDiag': self.onlyOffDiag = value
+            elif key == 'xlim': self.xlim = value
+            elif key == 'ylim': self.ylim = value
+            elif key == 'xlogscale': self.xlogscale = value
+            elif key == 'ylogscale': self.ylogscale = value
+            elif key == 'xsymlogscale': self.xsymlogscale = value
+            elif key == 'xlinthresh': self.xlinthresh = value
+            elif key == 'ysymlogscale': self.ysymlogscale = value
+            elif key == 'ylinthresh': self.ylinthresh = value
+            else: print('The optional argument: [{}] is not supported'.format(key))
         self.xdata = np.array(xdata)
         self.ydata = np.array(ydata)
-        if diag and offdiag:
-            self.x = self.xdata.flatten()
-            self.y = self.ydata.flatten()
-        elif offdiag: # keep only off-diagonals
-            self.onlyOffDiag = True
+        if self.onlyOffDiag: # keep only off-diagonals
             self.x = self._rm_diag(self.xdata).flatten()
             self.y = self._rm_diag(self.ydata).flatten()
             self.axislabel[0] += ' (off-diagonals)'
             self.axislabel[1] += ' (off-diagonals)'
-        elif diag: # keep only diagonals
-            self.onlyDiag = True
+        elif self.onlyDiag: # keep only diagonals
             self.x = np.diag(self.xdata)
             self.y = np.diag(self.ydata)
             self.axislabel[0] += ' (diagonals)'
             self.axislabel[1] += ' (diagonals)'
+        else:
+            self.x = self.xdata.flatten()
+            self.y = self.ydata.flatten()
 
     def _rm_diag(self, A: np.ndarray) -> np.ndarray:
         if A.shape[0] == A.shape[1]:
@@ -2136,11 +2240,58 @@ class GraphDensityDistribution(Grapher):
         self.lw = 2
         self.ls = '-'
 
-    def add_data(self, data, binsize: float):
+    def add_data(self, data, binsize: float, **kwargs):
+        """Add data to be plotted.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            data
+        xlim : tuple
+            horizontal plot range, default: fitted to data
+        ylim : tuple
+            vertical plot range, default: fitted to data
+        xlogscale : bool
+            use log scale in x-axis, default: `False`
+        ylogscale : bool
+            use log scale in y-axis, default: `False`
+        xsymlogscale : bool
+            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
+        xlinthresh : float
+            the threshold of linear range when using `xsymlogscale`, default: 1
+        """
+        for key, value in kwargs.items():
+            if key == 'xlim': self.xlim = value
+            elif key == 'ylim': self.ylim = value
+            elif key == 'xlogscale': self.xlogscale = value
+            elif key == 'ylogscale': self.ylogscale = value
+            elif key == 'xsymlogscale': self.xsymlogscale = value
+            elif key == 'xlinthresh': self.xlinthresh = value
+            else: print('The optional argument: [{}] is not supported'.format(key))
         self.xdata = np.array(data).flatten()
         min_elem = np.amin(self.xdata); max_elem = np.amax(self.xdata)
-        bins_amt = math.ceil((max_elem - min_elem) / binsize)
-        density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*binsize, bins_amt), density=True)
+        if self.xlogscale:
+            pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
+            number_of_bins = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / binsize)
+            density, binedge = np.histogram(
+                data, bins=np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)
+                                       + number_of_bins*binsize, number_of_bins)
+            )
+        elif self.xsymlogscale:
+            # pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
+            # neg_nearzero_datum = np.amax(np.array(data)[np.array(data) < 0])
+            pos_nearzero_datum = self.xlinthresh
+            neg_nearzero_datum = -self.xlinthresh
+            lin_bins_amt = math.ceil((max_elem - min_elem) / binsize)
+            pos_bins_amt = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / binsize)
+            neg_bins_amt = math.ceil((math.log10(-min_elem) - math.log10(-neg_nearzero_datum)) / binsize)
+            linbins = np.linspace(neg_nearzero_datum, pos_nearzero_datum, lin_bins_amt)
+            pos_logbins = np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)+pos_bins_amt*binsize, pos_bins_amt)
+            neg_logbins = -np.flip(np.logspace(math.log10(-neg_nearzero_datum), math.log10(-neg_nearzero_datum)+neg_bins_amt*binsize, neg_bins_amt))
+            density, binedge = np.histogram(data, bins=np.concatenate((neg_logbins, linbins, pos_logbins)), density=True)
+        else:
+            bins_amt = math.ceil((max_elem - min_elem) / binsize)
+            density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*binsize, bins_amt), density=True)
         density = np.array(density, dtype=float)
         density /= np.dot(density, np.diff(binedge)) # normalization
         self.x = (binedge[1:] + binedge[:-1]) / 2
@@ -2388,6 +2539,13 @@ def plot_mean_of_average_synaptic_weights_vs_spike_count(network: object, dynami
         else: return ax
     del avg_spike_count, avg_s_in_out
 
+def fread_array(filename: str, dtype=float)->np.ndarray:
+    try:
+        return np.array(list(csv.reader(open(filename, 'r')))).astype(dtype).flatten()
+    except FileNotFoundError:
+        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
+        print(err); exit(1)
+
 def fread_dense_matrix(filename: str, delim='\t')->np.ndarray:
     """Read a matrix from a file.
     
@@ -2501,6 +2659,7 @@ def fwrite_dense_matrix(A: iter, filename: str, delim='\t', dtype=float):
                         else:               fp.write( '{}{:d}'.format(delim, element))
                     fp.write('\n')      
             else:
+                for row in A:
                     if row[0] == 0: fp.write('{:.0f}'.format(row[0])) # To reduce file size
                     else:           fp.write( '{:.8}'.format(row[0]))
                     for element in row[1:]:
@@ -2553,6 +2712,9 @@ def remove_diag(A: np.ndarray)->np.ndarray:
     else:
         err = 'ArgumentValueError: the input matrix must be square.'
         print(err); exit(1)
+
+def remove_rowcol(A: np.ndarray, rm_idx)->np.ndarray:
+    return np.delete(np.delete(A, rm_idx, axis=0), rm_idx, axis=1)
 
 def is_strictly_increasing(seq: iter)->bool:
     """Return True if the input sequence is strictly increasing, else, return False."""

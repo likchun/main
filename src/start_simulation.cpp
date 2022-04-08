@@ -2,21 +2,18 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.3(13)
- * @date 2022-03-31
+ * @version 1.4.4(14)
+ * @date 2022-04-08
  * 
  * @copyright
  * 
- * @note compiled in C++ version 20 with g++
+ * @note to be compiled in C++ version 20 with g++
  * @bug 
  * 
  */
 
 // Features to be implemented:
 // forceOverwrite flag
-
-// Problem:
-// cannot be compiled or executed on department cluster
 
 
 #include <filesystem>
@@ -36,7 +33,7 @@
 #include "myinc.h"
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.3 | Build 13 | Last Update 31 Mar 2022";
+std::string code_ver = "Version 1.4.4 | Build 14 | Last Update 08 Apr 2022";
 
 using namespace std;
 using namespace myinc;
@@ -1004,9 +1001,9 @@ const int export_cont(int continuation, vector<double> &memp, vector<double> &re
 			for (size_t i = 1; i < vars.suppr_nodes.size(); i++) { ofs << ',' << vars.suppr_nodes[i]; }
 		}
 		ofs << '|' << vars.infile_adjm.string() << '|' << vars.mat_format << '|' << vars.delim << '|'
-			<< vars.outfile_curr.string() << '|' << vars.outfile_spkt.string() << '|'
-			<< vars.outfile_spks.string() << '|' << vars.outfile_memp.string() << '|'
-			<< vars.outfile_recv.string() << '|' << vars.outfile_info.string() << endl;
+			<< vars.outfile_info.string() << '|' << vars.outfile_spks.string() << '|'
+			<< vars.outfile_spkt.string() << '|' << vars.outfile_memp.string() << '|'
+			<< vars.outfile_curr.string() << '|' << vars.outfile_recv.string() << endl;
 
 		ofs << memp[0];
 		for (int i = 1; i < vars.mat_size; i++) { ofs << '\t' << memp[i]; }
