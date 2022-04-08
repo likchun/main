@@ -3,86 +3,87 @@
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
  * @version 1.4.3-0.1(13-1)
- * @date 2022-03-31
+ * @date 2022-04-08
  * 
  * @copyright
  * 
- * @note compiled in C++ version 20 with g++
+ * @note to be compiled in C++ version 11 with boost 1.78.0
  * @bug 
  * 
  */
 
-// Problem:
-// cannot be compiled or executed on department cluster
 
-
-#include <algorithm>
-#include <iostream>
+#include <boost/random.hpp>
 #include <fstream>
-#include <sstream>
-#include <random>
-#include <vector>
+// #include <boost/chrono.hpp>
+// #include <algorithm>
+// #include <iostream>
+// #include <sstream>
+// #include <numeric>
+// #include <string>
+// #include <vector>
+// #include <tuple>
+// #include <cmath>
+#define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.3-0.1 | Build 13-1 | Last Update 31 Mar 2022";
+std::string code_ver = "Version 1.4.4-0.1 | Build 14-1 | Last Update 08 Apr 2022";
 
 using namespace std;
+using namespace boost;
 
 struct Variables
 {
 	// Modify variables and parameters in 'vars.txt'
-	string infile_vars;
+	string infile_vars = "vars.txt";
 
 	// Data Input
-	string infile_path;
-	string inadjm_path;
-	string infile_adjm;
-	string mat_format;
-	int    mat_size;
-	char   delim;
+	string infile_adjm = "DIV66_gji.txt";
+	string mat_format  = "nonzero";
+	int    mat_size    = 4095;
+	char   delim       = '\t';
 
 	// Numerical Settings
-	double dt;
-	double Tn;
-	float  rand_seed;
-	double trunc_t_inh;
-	double trunc_t_exc;
+	double dt          = 0.125;
+	double Tn          = 7500;
+	float  rand_seed   = 0;
+	double trunc_t_inh = 250;
+	double trunc_t_exc = 250;
 
 	// Suppression of Synaptic Weights
-	double suppr_lv;
-	int    suppr_type;
+	double suppr_lv    = 0;
+	int    suppr_type  = -1; // +1: suppress exc links, -1: suppress inh links
 	vector <int> suppr_nodes;
 
 	// Parameters for Izhikevich's Neuron Model
-	double a_inh, b_inh, c_inh, d_inh;
-	double a_exc, b_exc, c_exc, d_exc;
-	double sigma;
+	double a_inh = 0.10, b_inh = 0.2, c_inh = -65, d_inh = 2;
+	double a_exc = 0.02, b_exc = 0.2, c_exc = -65, d_exc = 8;
+	double sigma = 3;
 
 	// Parameters for Synapse Model
-	double thres_v_inh;
-	double thres_v_exc;
-	double tau_inh;
-	double tau_exc;
-	double beta;
+	double thres_v_inh = -80.0;
+	double thres_v_exc = 0.0;
+	double tau_inh     = 6;
+	double tau_exc     = 5;
+	double beta        = 2;
 
 	// Initial Values
-	double memp_initval;
-	double recv_initval;
+	double memp_initval = -65;
+	double recv_initval = 8;
 
 	// Data Output
-	string outfile_spkt;
-	string outfile_spks;
-	string outfile_info;
-	string outfile_cont;
-	bool expoTimeSeri;
-	string outfile_memp;
-	// string outfile_curr;
-	// string outfile_recv;
+	string outfile_spkt = "spkt.txt";
+	string outfile_spks = "spks.txt";
+	string outfile_info = "info.txt";
+	string outfile_cont = "cont.dat";
+	bool   expoTimeSeri = true;
+	string outfile_memp = "memp.dat";
 	// Avoid modifying these file names
 
 	// Other Settings
-	size_t	TIMESERIES_BUFF;
-	int		PRECISION_DIGIT;
-	double	prec;
+	size_t	TIMESERIES_BUFF	= 150000000; // for infinity: numeric_limits<int>::max()
+	int		PRECISION_DIGIT	= 9; // use SINGLE floating point precision for time series output
+	// int		PRECISION_DIGIT	= 17 // use DOUBLE floating point precision for time series output
+	double	prec			= pow(10, PRECISION_DIGIT);
 } vars;
 
 void display_settings(Variables&);
@@ -111,47 +112,8 @@ int throw_error(string, string*);
 int throw_error(string, int*);
 
 
-int main(int argc, char** argv)
+int main()
 {
-	Variables vars {
-		"vars.txt",
-		"",
-		"",
-		"DIV66_gji.txt",
-		"nonzero",
-		4095,
-		'\t',
-		0.125,
-		7500,
-		0,
-		250, 250,
-		0,
-		-1, // +1: suppress exc links, -1: suppress inh links
-		vector<int>(),
-		0.1,0.2,-65,2,
-		0.02,0.2,-65,8,
-		3,
-		-80.0,0.0,
-		6,5,
-		2,
-		-65,8,
-		"spkt.txt",
-		"spks.txt",
-		"info.txt",
-		"cont.dat",
-		true,
-		"memp.dat",
-		// "curr.dat",
-		// "recv.dat",
-		150000000, // for infinity: numeric_limits<int>::max()
-		// use SINGLE floating point precision for time series output
-		// numeric_limits<double>::max_digits10 = 9;
-		9,
-		// use DOUBLE floating point precision for time series output
-		// numeric_limits<double>::max_digits10 = 17;
-		pow(10, 9)
-	};
-
 	int mode = 0;			// 0: overwrite mode | 1: continue mode
 	int continuation = -1;	// count the number of times of continuation
 
@@ -174,7 +136,7 @@ int main(int argc, char** argv)
 	vector <vector<double>>	spike_timestamps, synaptic_weights;
 
 
-	cout << '\n' << code_ver << '\n';
+	cout << '\n' << code_ver << "\n\n";
 	cout << "[Initialization] starts\n";
 
 	if (import_vars(vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
@@ -239,7 +201,7 @@ int main(int argc, char** argv)
 
 	TIMESERI_RESERVE_SIZE = ((size_t)(vars.TIMESERIES_BUFF / vars.mat_size) + 1) * vars.mat_size;
 	expo_memp.reserve(TIMESERI_RESERVE_SIZE);
-	if (vars.expoTimeSeri)
+	if (vars.expoTimeSeri && (continuation == -1))
 	{
 		for (int i = 0; i < vars.mat_size; i++) {
 			expo_memp.push_back(membrane_potential[i]);
@@ -254,9 +216,7 @@ int main(int argc, char** argv)
 
 		for (int node = 0; node < vars.mat_size; node++)
 		{
-			cout << "ok1" << '\n';
 			noise = vars.sigma * norm_dist(random_generator);
-			cout << "ok2" << '\n';
 
 			memp_temp = membrane_potential[node];	// so that the other variables take
 													// the membrane potential of the previous step
@@ -331,7 +291,7 @@ int main(int argc, char** argv)
 	cout << "[Computation] completed\n\n";
 	cout << "[Exportation] starts\n";
 
-	export_info(continuation, -1, vars);
+	export_info(continuation, 0, vars);
 	export_cont(continuation, membrane_potential, recovery_variable, synaptic_current, vars);
 	export_spkt(spike_timestamps, vars.outfile_spkt);
 	export_spks(spike_timesteps, vars.outfile_spks);
@@ -348,53 +308,23 @@ int main(int argc, char** argv)
 	}
 	if (ofs_memp.is_open()) { ofs_memp.close(); }
 
-	cout << "[Exportation] completed in\n\n";
+	cout << "[Exportation] completed\n\n";
 	cout << "COMPLETED :)" << endl;
 
 	return EXIT_SUCCESS;
 }
 
-bool check_file_existance(Variables &vars)
-{
-	ifstream ifs;
-	ifs.open(vars.outfile_info);
-	bool infoExist = ifs.good();
-	ifs.close();
-	ifs.open(vars.outfile_spkt);
-	bool spktExist = ifs.good();
-	ifs.close();
-	ifs.open(vars.outfile_spks);
-	bool spksExist = ifs.good();
-	ifs.close();
-	ifs.open(vars.outfile_memp);
-	bool mempExist = ifs.good();
-	ifs.close();
-	// ifs.open(vars.outfile_curr);
-	// bool currExist = ifs.good();
-	// ifs.close();
-	// ifs.open(vars.outfile_recv);
-	// bool recvExist = ifs.good();
-	// ifs.close();
-	ifs.open(vars.outfile_cont);
-	bool contExist = ifs.good();
-	ifs.close();
-
-	return (
-		infoExist || spktExist || spksExist || mempExist || contExist
-		// currExist || recvExist
-	);
-}
 
 void display_settings(Variables &vars)
 {
 	cout << "- Network: " << vars.infile_adjm << '\n'
-		   << "- T:  " << vars.Tn << " ms\n"
-		   << "- dt: " << vars.dt << " ms\n"
-		   << "- strength of noise (sigma): " << vars.sigma << '\n'
-		   << "- seed to random noise gen:  " << vars.rand_seed << '\n';
+		 << "- T:  " << vars.Tn << " ms\n"
+		 << "- dt: " << vars.dt << " ms\n"
+		 << "- strength of noise (sigma): " << vars.sigma << '\n'
+		 << "- seed to random noise gen:  " << vars.rand_seed << '\n';
 	if (vars.suppr_lv != 0) {
 		cout << "- suppression level:    " << vars.suppr_lv << '\n'
-			   << "- suppressed link type: ";
+			 << "- suppressed link type: ";
 		if (vars.suppr_type == -1) { cout << "inh\n"; }
 		else { cout << "exc\n"; }
 	}
@@ -478,8 +408,7 @@ int import_adjm(vector<vector<double>> &synaptic_weights, Variables &vars)
 	vector<vector<double>> adjm_temp;
 	vector<double> row_buf;
 	string line, elem;
-	string adjm_path = vars.infile_adjm;
-	ifstream ifs(adjm_path);
+	ifstream ifs(vars.infile_adjm);
 	if (ifs.is_open()) {
 		if (vars.mat_format == "nonzero") {
 			synaptic_weights = vector<vector<double>>(vars.mat_size, vector<double>(vars.mat_size, 0));
@@ -507,7 +436,7 @@ int import_adjm(vector<vector<double>> &synaptic_weights, Variables &vars)
 			return throw_error("coding_error", "unexpected value for 'vars.mat_format'");
 		}
 		ifs.close();
-	} else { return throw_error("file_access", adjm_path); }
+	} else { return throw_error("file_access", vars.infile_adjm); }
 	return EXIT_SUCCESS;
 }
 
@@ -605,11 +534,6 @@ int import_prev_vars(vector<double> &memp, vector<double> &recv, vector<double> 
 	ss.str(suppr_nodes);
 	vars.suppr_nodes.clear();
 	while (getline(ss, node, ',')) { vars.suppr_nodes.push_back(stoi(node)); }
-	// vars.outfile_spkt   = prev_vars[28];
-	// vars.outfile_curr   = prev_vars[29];
-	// vars.outfile_memp   = prev_vars[30];
-	// vars.outfile_recv   = prev_vars[31];
-	// vars.outfile_info   = prev_vars[32];
 	return continuation;
 }
 
@@ -790,12 +714,14 @@ void suppress_excitation_of_selected(vector<vector<double>> &synaptic_weights,
 
 int export_info(int continuation, float time_elapsed, Variables &vars)
 {
+	// time_t start_t = chrono::system_clock::to_time_t(chrono::system_clock::now());
+
 	if (continuation == -1) {
 		ofstream ofs(vars.outfile_info, ios::trunc);
 		if (ofs.is_open()) {
 			ofs << code_ver << '\n'
 				<< "--------------------------------------------------\n"
-				<< "computation finished at: " << ""
+				// << "computation finished at: " << ctime(&start_t)
 				<< "time elapsed: " << time_elapsed << " s\n\n"
 				<< "[Numerical Settings]" << '\n'
 				<< "network file name:\t\t\t" << vars.infile_adjm << '\n'
@@ -825,7 +751,7 @@ int export_info(int continuation, float time_elapsed, Variables &vars)
 		ofstream ofs(vars.outfile_info, ios::app);
 		if (ofs.is_open()) {
 			ofs << "--------------------------------------------------\n"
-				<< "computation finished at: " << ""
+				// << "computation finished at: " << ctime(&start_t)
 				<< "time elapsed: " << time_elapsed << "\n\n"
 				<< "extend duration (T) to:\t\t" << vars.Tn << "\n\n";
 			ofs.close();
@@ -838,8 +764,7 @@ int export_cont(int continuation, vector<double> &memp, vector<double> &recv,
 					  vector<double> &curr, Variables &vars)
 {
 	ofstream ofs(vars.outfile_cont, ios::trunc);
-	// numeric_limits<double>::max_digits10 = 17
-	ofs.precision(17);
+	ofs.precision(17); // precision of double = 17
 	if (ofs.is_open()) {
 		ofs << ++continuation << '|' << vars.expoTimeSeri << '\n';
 
@@ -858,9 +783,8 @@ int export_cont(int continuation, vector<double> &memp, vector<double> &recv,
 			for (size_t i = 1; i < vars.suppr_nodes.size(); i++) { ofs << ',' << vars.suppr_nodes[i]; }
 		}
 		ofs << '|' << vars.infile_adjm << '|' << vars.mat_format << '|' << vars.delim << '|'
-			<< vars.outfile_info << '|' << vars.outfile_spkt << '|'
-			<< vars.outfile_spks << '|' << vars.outfile_memp << endl;
-			// << vars.outfile_curr << '|' << vars.outfile_recv << endl;
+			<< vars.outfile_info << '|' << vars.outfile_spks << '|'
+			<< vars.outfile_spkt << '|' << vars.outfile_memp << endl;
 
 		ofs << memp[0];
 		for (int i = 1; i < vars.mat_size; i++) { ofs << '\t' << memp[i]; }
@@ -937,16 +861,16 @@ int throw_error(string err_type)
 int throw_error(string err_type, string err_msg)
 {
 	string msg;
-	if (err_type == "file_access") {
-		msg = "<FileAccessError> \""+err_msg+"\" cannot be accessed or it does not exist";
-	} else if (err_type == "vars_missing") {
-		msg = "<InputFileNotFound> variable file \""+err_msg+"\" cannot be found";
-	} else if (err_type == "invalid_input") {
+	if (err_type == "invalid_input") {
 		msg = "<InvalidInput> ["+err_msg+"] is invalid";
 	} else if (err_type == "coding_error") {
 		msg = "<CodingError> " + err_msg;
+	} else if (err_type == "file_access") {
+		msg = "<FileAccessError> \""+err_msg+"\" cannot be accessed or it does not exist";
+	} else if (err_type == "vars_missing") {
+		msg = "<InputFileNotFound> variable file \""+err_msg+"\" cannot be found";
 	} else {
-		msg = "unknown failure [3]";
+		msg = "unknown failure [2]";
 	}
 	cerr << "\n" << msg << endl;
 	return EXIT_FAILURE;
@@ -973,15 +897,16 @@ int throw_error(string err_type, int *err_num)
 {
 	string msg;
 	if (err_type == "invalid_main_arg") {
-		cerr << "\n<InvalidOption> unexpected arguments for start_simulation::main(): it takes 0 or 2 or 3 arguments, but "
-			 << err_num[0]-1 << " was(were) given\n"
-			 << "- 2 args: [matrix file directory]  [I/O directory]\n"
-			 << "- 3 args: [matrix file directory]  [I/O directory]  [log file path]" << endl;
+		msg = "<InvalidOption> unexpected arguments for start_simulation::main(): it takes 0 or 2 or 3 arguments, but "
+			  +to_string(static_cast<long long>(err_num[0]-1))+" was(were) given\n"
+			  +"- 2 args: [matrix file directory]  [I/O directory]\n"
+			  +"- 3 args: [matrix file directory]  [I/O directory]  [log file path]";
 	} else if (err_type == "neuron_type") {
-		cerr << "<Error> neuron classification: inconsistent neuron class is detected at ("
-			 << err_num[0] << ", " << err_num[1] << ")" << endl;
+		msg = "<Error> neuron classification: inconsistent neuron class is detected at ("
+			  +to_string(static_cast<long long>(err_num[0]))+", "+to_string(static_cast<long long>(err_num[1]))+")";
 	} else {
-		cerr << "unknown failure [5]" << endl;
+		msg = "unknown failure [5]";
 	}
+	cerr << "\n" << msg << endl;
 	return EXIT_FAILURE;
 }
