@@ -10,6 +10,7 @@
  * 
  */
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -23,14 +24,16 @@ struct Vars
 {
 	/* Settings */
     int		N		= 4095;
-    double	tau		= 0.1;
-    double	Tn		= 10000;
-    double	dt		= 0.05;
+    double	tau		= 1000.0/7060.0;
+    double	Tn		= 300078;
+    double	dt		= 1000.0/7060.0;
 
 	bool	findK0	= true;
 	bool	findKT	= true;
 
-    string	infile	= "spks.txt";
+    string	infile	= "DIV66_spks_0.txt";
+	char	indelim	= '\t';
+
     string	outf_K0	= "K_0";
     string	outf_KT	= "K_tau";
 } vars;
@@ -65,7 +68,7 @@ private:
 	bool isActivated;
 } timer;
 
-int import_spks(vector<vector<int>>&, string&);
+int import_spks(vector<vector<int>>&, string&, char);
 int fwrite_dense_matrix(vector<vector<double>>&, string);
 
 int main()
@@ -78,7 +81,7 @@ int main()
     vector<vector<int>> spks, spks_lag; // Record the time step of spikes
     vector<double> avg_s(vars.N);
 
-    if (import_spks(spks, vars.infile) == EXIT_FAILURE) { return EXIT_FAILURE; }
+    if (import_spks(spks, vars.infile, vars.indelim) == EXIT_FAILURE) { return EXIT_FAILURE; }
 	cout << "Spike trains data read from text file \"" << vars.infile << "\"\n";
 	cout << "Completed in " << (int)(timer.stopwatch_lap()) << " ms\n\n";
 
@@ -136,6 +139,9 @@ int main()
 		for (int i = 0; i < vars.N; i++) {
 			for (int j = 0; j < vars.N; j++) {
 				sum_s_ij = 0;
+				// spks_lag[j] instead of spks_lag[i]:
+				// When we're doing K(tau)_ij, x_i(t+tau) pairs with x_j(t),
+				// then it's x_j that we should add `lag_s` to, so that their time-stamps match.
 				if (spks_lag[j].size() < spks[i].size()) {
 					for (auto &spk : spks_lag[j]) {
 						sum_s_ij += binary_search(spks[i].begin(), spks[i].end(), spk);
@@ -157,7 +163,7 @@ int main()
 	return EXIT_SUCCESS;
 }
 
-int import_spks(vector<vector<int>> &spks, string &infile_spks)
+int import_spks(vector<vector<int>> &spks, string &infile_spks, char delim)
 {
 	spks = vector<vector<int>>();
 	vector<int> row_buf;
@@ -166,7 +172,7 @@ int import_spks(vector<vector<int>> &spks, string &infile_spks)
 	if (ifs.is_open()) {
 		while(getline(ifs, line, '\n')) {
 			stringstream ss(line);
-			while(getline(ss, elem, '\t')) { row_buf.push_back(stof(elem)); }
+			while(getline(ss, elem, delim)) { row_buf.push_back(stof(elem)); }
 			row_buf.erase(row_buf.begin()); // delete the number of spikes
 			spks.push_back(row_buf);
 			row_buf.clear();
