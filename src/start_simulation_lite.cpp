@@ -723,7 +723,7 @@ void suppress_excitation_of_selected(vector<vector<double>> &synaptic_weights,
 
 int export_info(int continuation, float time_elapsed, Variables &vars)
 {
-	char* datetime_buf;
+	char datetime_buf[64];
 	time_t datetime = time(NULL);
 	struct tm *tm = localtime(&datetime);
 	strftime(datetime_buf, sizeof(datetime_buf), "%c", tm);
