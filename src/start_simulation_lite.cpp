@@ -733,7 +733,7 @@ int export_info(int continuation, float time_elapsed, Variables &vars)
 		if (ofs.is_open()) {
 			ofs << code_ver << '\n'
 				<< "--------------------------------------------------\n"
-				<< "computation finished at: " << datetime_buf
+				<< "computation finished at: " << datetime_buf << '\n'
 				<< "time elapsed: " << time_elapsed << " s\n\n"
 				<< "[Numerical Settings]" << '\n'
 				<< "network file name:\t\t\t" << vars.infile_adjm << '\n'
