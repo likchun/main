@@ -2,7 +2,7 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.3-0.1(13-1)
+ * @version 1.4.4-0.2(14-2)
  * @date 2022-04-08
  * 
  * @copyright
@@ -15,6 +15,7 @@
 
 #include <boost/random.hpp>
 #include <fstream>
+#include <time.h>
 // #include <boost/chrono.hpp>
 // #include <algorithm>
 // #include <iostream>
@@ -26,7 +27,7 @@
 // #include <cmath>
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.4-0.1 | Build 14-1 | Last Update 08 Apr 2022";
+std::string code_ver = "Version 1.4.4-0.2 | Build 14-2 | Last Update 10 Apr 2022";
 
 using namespace std;
 using namespace boost;
@@ -135,8 +136,13 @@ int main()
 	vector <vector<int>>	spike_timesteps;
 	vector <vector<double>>	spike_timestamps, synaptic_weights;
 
+	char datetime_buf[64];
+	time_t datetime = time(NULL);
+	clock_t beg = clock(), lap = clock();
+	struct tm *tm = localtime(&datetime);
+	strftime(datetime_buf, sizeof(datetime_buf), "%c", tm);
 
-	cout << '\n' << code_ver << "\n\n";
+	cout << '\n' << code_ver << "\n\n" << datetime_buf << "\n\n";
 	cout << "[Initialization] starts\n";
 
 	if (import_vars(vars) == EXIT_FAILURE) { return EXIT_FAILURE; }
@@ -195,7 +201,8 @@ int main()
 		if (!ofs_memp.is_open()) { return throw_error("file_access", vars.outfile_memp); }
 	}
 
-	cout << "[Initialization] completed\n\n";
+	cout << "[Initialization] completed in " << (double)(clock() - lap)/CLOCKS_PER_SEC << " s\n\n";
+	lap = clock();
 	display_settings(vars);
 	cout << "[Computation] starts" << endl;
 
@@ -288,10 +295,11 @@ int main()
 		}
 	}
 
-	cout << "[Computation] completed\n\n";
+	cout << "[Computation] completed in " << (double)(clock() - lap)/CLOCKS_PER_SEC << " s\n\n";
+	lap = clock();
 	cout << "[Exportation] starts\n";
 
-	export_info(continuation, 0, vars);
+	export_info(continuation, (double)(clock() - beg)/CLOCKS_PER_SEC, vars);
 	export_cont(continuation, membrane_potential, recovery_variable, synaptic_current, vars);
 	export_spkt(spike_timestamps, vars.outfile_spkt);
 	export_spks(spike_timesteps, vars.outfile_spks);
@@ -308,7 +316,8 @@ int main()
 	}
 	if (ofs_memp.is_open()) { ofs_memp.close(); }
 
-	cout << "[Exportation] completed\n\n";
+	cout << "[Exportation] completed in " << (double)(clock() - lap)/CLOCKS_PER_SEC << " s\n\n";
+	lap = clock();
 	cout << "COMPLETED :)" << endl;
 
 	return EXIT_SUCCESS;
@@ -714,14 +723,17 @@ void suppress_excitation_of_selected(vector<vector<double>> &synaptic_weights,
 
 int export_info(int continuation, float time_elapsed, Variables &vars)
 {
-	// time_t start_t = chrono::system_clock::to_time_t(chrono::system_clock::now());
+	char* datetime_buf;
+	time_t datetime = time(NULL);
+	struct tm *tm = localtime(&datetime);
+	strftime(datetime_buf, sizeof(datetime_buf), "%c", tm);
 
 	if (continuation == -1) {
 		ofstream ofs(vars.outfile_info, ios::trunc);
 		if (ofs.is_open()) {
 			ofs << code_ver << '\n'
 				<< "--------------------------------------------------\n"
-				// << "computation finished at: " << ctime(&start_t)
+				<< "computation finished at: " << datetime_buf
 				<< "time elapsed: " << time_elapsed << " s\n\n"
 				<< "[Numerical Settings]" << '\n'
 				<< "network file name:\t\t\t" << vars.infile_adjm << '\n'
@@ -751,7 +763,7 @@ int export_info(int continuation, float time_elapsed, Variables &vars)
 		ofstream ofs(vars.outfile_info, ios::app);
 		if (ofs.is_open()) {
 			ofs << "--------------------------------------------------\n"
-				// << "computation finished at: " << ctime(&start_t)
+				<< "computation finished at: " << datetime_buf
 				<< "time elapsed: " << time_elapsed << "\n\n"
 				<< "extend duration (T) to:\t\t" << vars.Tn << "\n\n";
 			ofs.close();
