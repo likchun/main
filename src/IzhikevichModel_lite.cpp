@@ -1,5 +1,5 @@
 /**
- * @file start_simulation.cpp
+ * @file IzhikevichModel_lite.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
  * @version 1.4.6-0.4(16-4)
