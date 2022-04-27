@@ -2,8 +2,8 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.4(14)
- * @date 2022-04-08
+ * @version 1.4.6(16)
+ * @date 2022-04-27
  * 
  * @copyright
  * 
@@ -26,16 +26,17 @@
 #include <string>
 #include <limits>
 #include <chrono>
-#include <random>
+#include <boost/random.hpp> // Use <boost/random.hpp> instead of <random> for compatibility
 #include <vector>
 #include <tuple>
 #include <cmath>
 #include "myinc.h"
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.4 | Build 14 | Last Update 08 Apr 2022";
+std::string code_ver = "Version 1.4.6 | Build 16 | Last Update 27 Apr 2022";
 
 using namespace std;
+using namespace boost;
 using namespace myinc;
 namespace fs = std::filesystem;
 using path = fs::path;

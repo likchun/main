@@ -2,12 +2,12 @@
  * @file start_simulation.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons
- * @version 1.4.4-0.2(14-2)
- * @date 2022-04-08
+ * @version 1.4.6-0.4(16-4)
+ * @date 2022-04-27
  * 
  * @copyright
  * 
- * @note to be compiled in C++ version 11 with boost 1.78.0
+ * @note to be compiled in C++ version 11 or later with boost 1.78.0
  * @bug 
  * 
  */
@@ -16,18 +16,9 @@
 #include <boost/random.hpp>
 #include <fstream>
 #include <time.h>
-// #include <boost/chrono.hpp>
-// #include <algorithm>
-// #include <iostream>
-// #include <sstream>
-// #include <numeric>
-// #include <string>
-// #include <vector>
-// #include <tuple>
-// #include <cmath>
 #define _CRT_SECURE_NO_WARNINGS
 
-std::string code_ver = "Version 1.4.4-0.2 | Build 14-2 | Last Update 10 Apr 2022";
+std::string code_ver = "Version 1.4.6-0.4 | Build 16-4 | Last Update 27 Apr 2022";
 
 using namespace std;
 using namespace boost;
