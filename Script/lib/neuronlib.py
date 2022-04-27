@@ -31,9 +31,16 @@ import os
 import csv
 import math
 import numpy as np
+import matplotlib as mpl
 from scipy import linalg, stats
-from matplotlib import pyplot as plt, ticker as tck, collections as mcol
+from matplotlib import pyplot as plt, collections as mcol, ticker as tck
 from lib.cppvector import Vector_fl
+
+
+def font_settings_for_matplotlib(font: dict):
+    # Use ">> print(plt.rcParams.keys())" to view all options
+    plt.rc('font', **font)
+    mpl.rcParams['mathtext.default'] = 'regular'
 
 
 class Network:
@@ -66,32 +73,32 @@ class Network:
             self.adjacency_matrix = self._init_adjacency_matrix_from_file(adjacency_matrix, input_path, delimiter, number_of_neurons, full_matrix_format)
             print('Adjacency matrix is input from a local file: {}.'.format(adjacency_matrix))
         else:
-            err = 'ArgumentTypeError: the input argument \'adjacency matrix\' must either be a numpy.ndarray or a string storing the path to a local matrix file.'
+            err = 'ArgumentTypeError: the input argument \"adjacency matrix\" must either be a numpy.ndarray or a string storing the path to a local matrix file.'
             print(err); exit(1)
         np.fill_diagonal(self.adjacency_matrix, 0) # assume no self-linkage
         self.number_of_neurons = number_of_neurons
         self.isAdjMatModified = False
 
-    def __del__(self):
-        pass
+    def __del__(self): pass
 
     def _init_input_output_path(self, input_folder: str, output_folder: str):
         this_dir = os.path.dirname(os.path.abspath(__file__))
         index = this_dir.rfind('\\')
-        this_dir = this_dir[:index]
-        if input_folder == None: input_folder = ''
-        else: input_folder = input_folder + '\\'
-        input_path = this_dir + '\\' + input_folder
-        if output_folder == None: output_folder = ''
-        else: output_folder = output_folder + '\\'
-        output_path = this_dir + '\\' + output_folder
-        try: os.mkdir(output_path)
-        except FileExistsError: pass
+        if input_folder != None:
+            if ':' in input_folder: input_path = input_folder
+            else: input_path = os.path.join(this_dir[:index], input_folder)
+        else: input_path = ''
+        if output_folder != None:
+            if ':' in output_folder: output_path = output_folder
+            else: output_path = os.path.join(this_dir[:index], output_folder)
+            try: os.mkdir(output_path)
+            except FileExistsError: pass
+        else: output_path = ''
         return input_path, output_path
 
     def _init_adjacency_matrix_from_file(self, adjacency_matrix_file: str, input_path: str, delimiter: str, network_size: int, full_matrix_format: bool):
         try:
-            with open(input_path+adjacency_matrix_file, 'r', newline='') as fp:
+            with open(os.path.join(input_path, adjacency_matrix_file), 'r', newline='') as fp:
                 if full_matrix_format == False:
                     content = list(csv.reader(fp, delimiter=' '))
                     for i in range(len(content)):
@@ -108,7 +115,7 @@ class Network:
                     reader = csv.reader(fp, delimiter=delimiter)
                     adjacency_matrix = np.array(list(reader)).astype(float)
         except FileNotFoundError:
-            err = 'FileNotFoundError: adjacency matrix file [{}] cannot be found.'.format(input_path+adjacency_matrix_file)
+            err = 'FileNotFoundError: adjacency matrix file \"{}\" cannot be found.'.format(os.path.join(input_path, adjacency_matrix_file))
             print(err); exit(1)
         return adjacency_matrix
 
@@ -534,21 +541,21 @@ class Network:
         print('Drawing graph: distribution of positive synaptic weights')
         if mpl_ax == None:
             return self._plot_distribution(positive_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                            figsize, dpi, 'Positive w_ij distribution', 'Positive w_ij',
-                                            'Distribution of positive synaptic weights', xlim, (0, None),
-                                            show_norm, x_logscale, y_logscale, remove_zero_density,
-                                            'plot_synaptic_weight_dist_pos', file_label, file_type)
+                                           figsize, dpi, 'Positive w_ij distribution', 'Positive w_ij',
+                                           'Distribution of positive synaptic weights', xlim, (0, None),
+                                           show_norm, x_logscale, y_logscale, remove_zero_density,
+                                           'plot_synaptic_weight_dist_pos', file_label, file_type)
         else:
             return self._plot_distribution(positive_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                            x_logscale=x_logscale, y_logscale=y_logscale,
-                                            show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                            plot_label=plot_label, mpl_ax=mpl_ax)
+                                           x_logscale=x_logscale, y_logscale=y_logscale,
+                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
+                                           plot_label=plot_label, mpl_ax=mpl_ax)
 
     def plot_synaptic_weight_distribution(self, bin_size=0.001, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                              show_norm=False, xlim=(None, None), x_logscale=False,
-                                              y_logscale=False, remove_zero_density=False,
-                                              plot_label='', file_label='', file_type=['svg','png']):
+                                          pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
+                                          show_norm=False, xlim=(None, None), x_logscale=False,
+                                          y_logscale=False, remove_zero_density=False,
+                                          plot_label='', file_label='', file_type=['svg','png']):
         """Plot the distribution of synaptic weights.
 
         Parameters
@@ -1100,7 +1107,7 @@ class NeuralDynamics:
             if input_folder == None: input_folder = 'current directory'
             # print('\'config\' input from a local file: [{}] from [{}].'.format(config, input_folder))
         else:
-            err = 'ArgumentTypeError: the input argument \'config\' must either be a list of [N, dt, T] or a string storing the path to a local file.'
+            err = 'ArgumentTypeError: the input argument \"config\" must either be a list of [N, dt, T] or a string storing the path to a local file.'
             print(err); exit(1)
         if input_path == None:
             self.membrane_potential_file = membrane_potential
@@ -1108,23 +1115,23 @@ class NeuralDynamics:
         else:
             self.membrane_potential_file = input_path+membrane_potential
             self.synaptic_current_file = input_path+synaptic_current
-        print('Spiking data input from a local file: [{}] from [{}].'.format(spiking_data, input_folder))
+        print('Spiking data input from a local file: \"{}\" from \"{}\".'.format(spiking_data, input_folder))
     
-    def __del__(self):
-        pass
+    def __del__(self): pass
 
     def _init_input_output_path(self, input_folder: str, output_folder: str):
         this_dir = os.path.dirname(os.path.abspath(__file__))
         index = this_dir.rfind('\\')
-        this_dir = this_dir[:index]
-        if input_folder == None: input_folder = ''
-        else: input_folder = input_folder + '\\'
-        input_path = this_dir + '\\' + input_folder
-        if output_folder == None: output_folder = ''
-        else: output_folder = output_folder + '\\'
-        output_path = this_dir + '\\' + output_folder
-        try: os.mkdir(output_path)
-        except FileExistsError: pass
+        if input_folder != None:
+            if ':' in input_folder: input_path = input_folder
+            else: input_path = os.path.join(this_dir[:index], input_folder)
+        else: input_path = ''
+        if output_folder != None:
+            if ':' in output_folder: output_path = output_folder
+            else: output_path = os.path.join(this_dir[:index], output_folder)
+            try: os.mkdir(output_path)
+            except FileExistsError: pass
+        else: output_path = ''
         return input_path, output_path
 
     def _init_spiking_data_from_file(self, spiking_data_file: str, config_file, delimiter: str, input_path: str):
@@ -1133,7 +1140,7 @@ class NeuralDynamics:
             matrix_size = config[0]
         elif type(config_file) == str:
             try:
-                with open(input_path+config_file, 'r') as fp:
+                with open(os.path.join(input_path, config_file), 'r') as fp:
                     reader = csv.reader(fp, delimiter='|')
                     config = np.array(list(reader), dtype=object)
                 config = config[1]
@@ -1142,11 +1149,11 @@ class NeuralDynamics:
                 config[2] = float(config[2]) # config[2] = T
                 matrix_size = int(config[0])
             except FileNotFoundError:
-                err = 'FileNotFoundError: configuration data file [{}] cannot be found.'.format(input_path+config_file)
+                err = 'FileNotFoundError: configuration data file \"{}\" cannot be found.'.format(os.path.join(input_path, config_file))
                 print(err); exit(1)
         try:
-            with open(input_path+spiking_data_file, 'r') as fp:
-                spike_times = np.empty((matrix_size), dtype=object)
+            with open(os.path.join(input_path, spiking_data_file), 'r') as fp:
+                spike_times = np.empty(matrix_size, dtype=object)
                 spike_count = np.zeros(matrix_size)
                 reader = csv.reader(fp, delimiter=delimiter)
                 counter = 0
@@ -1156,7 +1163,7 @@ class NeuralDynamics:
                     spike_count[counter] = int(row[0])
                     counter += 1
         except FileNotFoundError:
-            err = 'FileNotFoundError: spiking data file [{}] cannot be found.'.format(input_path+spiking_data_file)
+            err = 'FileNotFoundError: spiking data file \"{}\" cannot be found.'.format(os.path.join(input_path, spiking_data_file))
             print(err); exit(1)
         return spike_count, spike_times, config
 
@@ -1166,14 +1173,14 @@ class NeuralDynamics:
 
     def _init_firing_rate_change(self, neural_dynamics_original: object, specific_node=[]):
         if type(neural_dynamics_original) != NeuralDynamics:
-            err = 'ArgumentTypeError: the input argument \'neural_dynamics_original\' must be an object of class:NeuralDynamics.'
+            err = 'ArgumentTypeError: the input argument \"neural_dynamics_original\" must be an object of class:NeuralDynamics.'
             print(err); exit(1)
         spike_count_orig = neural_dynamics_original.spike_count
         config_orig = neural_dynamics_original.config
         if len(self.spike_count) != len(spike_count_orig):
             err = 'ArgumentValueError: the numbers of neurons from two numerical simulations do not match.'
             print(err); exit(1)
-        firing_rate_orig = self._init_firing_rate(spike_count_orig, config_orig, custom=True)
+        firing_rate_orig = self._init_firing_rate(spike_count_orig, config_orig, _custom=True)
         firing_rate = self._init_firing_rate()
         if specific_node == []: return firing_rate - firing_rate_orig
         else: return firing_rate[specific_node] - firing_rate_orig[specific_node]
@@ -1200,7 +1207,7 @@ class NeuralDynamics:
         time_series = Vector_fl()
         if time_series.read_from_binary(_membrane_potential, node_index, _config[0]) == 0: pass
         else:
-            err = 'FileNotFoundError: time series of membrane potential [{}] cannot be found.'.format(
+            err = 'FileNotFoundError: time series of membrane potential \"{}\" cannot be found.'.format(
                   self.membrane_potential_file)
             print(err); exit(1)
         return np.array(time_series)
@@ -1210,14 +1217,14 @@ class NeuralDynamics:
         time_series = Vector_fl()
         if time_series.read_from_binary(_synaptic_current, node_index, _config[0]) == 0: pass
         else:
-            err = 'FileNotFoundError: time series of synaptic current [{}] cannot be found.'.format(
+            err = 'FileNotFoundError: time series of synaptic current \"{}\" cannot be found.'.format(
                   self.membrane_potential_file)
             print(err); exit(1)
         return np.array(time_series)
 
     def _init_membrane_potential_change(self, node_index: int, neural_dynamics_original: object):
         if type(neural_dynamics_original) != NeuralDynamics:
-            err = 'ArgumentTypeError: the input argument \'neural_dynamics_original\' must be an object of class:NeuralDynamics.'
+            err = 'ArgumentTypeError: the input argument \"neural_dynamics_original\" must be an object of class:NeuralDynamics.'
             print(err); exit(1)
         if self.config != neural_dynamics_original.config:
             err = 'ArgumentValueError: the configurations of two numerical simulations do not match.'
@@ -1879,40 +1886,49 @@ class NeuralDynamics:
 class Grapher:
 
     def __init__(self) -> None:
-        self.xdata      = None
-        self.ydata      = None
-        self.fig        = None
-        self.ax         = None
-        self.x          = None
-        self.y          = None
+        self.grapher_mode = 'grapher'
 
-        self.c          = 'b'
-        self.m          = '^'
-        self.ms         = 5
-        self.ls         = 'none'
-        self.lw         = 2
-        self.plotlabel  = ''
-        self.axislabel  = ['','']
-        self.grid       = True
-        self.legend     = False
-        self.textbox    = ''
+        self.xdata        = None
+        self.ydata        = None
+        self.fig          = None
+        self.axes         = None
+        self.ax           = None
+        self.x            = None
+        self.y            = None
+ 
+        self.c            = 'b'
+        self.m            = '^'
+        self.ms           = 5
+        self.ls           = 'none'
+        self.lw           = 2
+        self.plotlabel    = ''
+        self.axislabel    = ['','']
+        self.xlabelnplot  = []
+        self.ylabelnplot  = []
+        self.grid         = True
+        self.legend       = False
+        self.legendcomb   = False
+        self.textbox      = ''
 
-        self.xlim       = (None, None)
-        self.ylim       = (None, None)
-        self.xlogscale  = False
-        self.ylogscale  = False
-        self.xsymlogscale   = False
-        self.xlinthresh = 1
-        self.ysymlogscale   = False
-        self.ylinthresh = 1
+        self.binsize      = None
+
+        self.xlim         = (None, None)
+        self.ylim         = (None, None)
+        self.xlogscale    = False
+        self.ylogscale    = False
+        self.xsymlogscale = False
+        self.xlinthresh   = 1
+        self.ysymlogscale = False
+        self.ylinthresh   = 1
 
     def import_fig(self, ax, fig=None):
         self.fig = fig
         self.ax = ax
 
-    def create_fig(self, figsize=(7, 7), dpi=150):
+    def create_fig(self, nrows=1, ncols=1, figsize=(7, 7), dpi=150):
         self.__init__()
-        self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi)
+        if nrows == 1 and ncols == 1: self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi)
+        else: self.fig, self.axes = plt.subplots(nrows, ncols, figsize=figsize, dpi=dpi)
 
     def stylize_plot(self, **kwargs):
         """Stylize matplotlib axes.
@@ -1939,7 +1955,7 @@ class Grapher:
             elif key == 'linestyle' or key == 'ls': self.ls = value
             elif key == 'lineweight' or key == 'lw': self.lw = value
             elif key == 'grid': self.grid = value
-            else: print('The optional argument: [{}] is not supported'.format(key))
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
     def label_plot(self, **kwargs):
         """Label matplotlib axes.
@@ -1954,8 +1970,14 @@ class Grapher:
             x-axis label
         ylabel : str
             y-axis label
+        xlabelnplot : list of int
+            show y-axis label in selected sub-plots
+        ylabelnplot : list of int
+            show y-axis label in selected sub-plots
         legend : bool
             legend on/off, default: `False`
+        legendcombine : bool
+            combine legends if there are multiple subplots, default: `False`
         textbox : str
             plot information to be displayed at top-left corner
         """
@@ -1966,34 +1988,119 @@ class Grapher:
                 self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
             elif key == 'xlabel': self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
             elif key == 'ylabel': self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
+            elif key == 'xlabelnplot': self.xlabelnplot = value
+            elif key == 'ylabelnplot': self.ylabelnplot = value
             elif key == 'legend': self.legend = value
+            elif key == 'legendcombine': self.legendcomb = value
             elif key == 'textbox': self.textbox = value
-            else: print('The optional argument: [{}] is not supported'.format(key))
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-    def plot(self):
+    def set_scale(self, nplot=None, **kwargs):
+        """Generate a plot with supplied data.
+
+        Parameters
+        ----------
+        nplot : int
+            set the scale of the n-th sub-plot if there are multiple sub-plots
+        xlim : tuple
+            horizontal plot range, default: fitted to data
+        ylim : tuple
+            vertical plot range, default: fitted to data
+        xlogscale : bool
+            use log scale in x-axis, default: `False`
+        ylogscale : bool
+            use log scale in y-axis, default: `False`
+        xsymlogscale : bool
+            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
+        xlinthresh : float
+            the threshold of linear range when using `xsymlogscale`, default: 1
+        ysymlogscale : bool
+            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
+        ylinthresh : float
+            the threshold of linear range when using `ysymlogscale`, default: 1
+        """
+        for key, value in kwargs.items():
+            if key == 'xlim': self.xlim = value
+            elif key == 'ylim': self.ylim = value
+            elif key == 'xlogscale':
+                self.xlogscale = value
+                if self.grapher_mode == 'densitydistribution':
+                    print('Warning: to show data points in log scale, use argument [logdata] in "add_data" instead')
+            elif key == 'ylogscale': self.ylogscale = value
+            elif key == 'xsymlogscale':
+                self.xsymlogscale = value
+                if self.grapher_mode == 'densitydistribution':
+                    print('Warning: to show data points in log scale, use argument [symlogdata] in "add_data" instead')
+            elif key == 'xlinthresh':
+                self.xlinthresh = value
+                if self.grapher_mode == 'densitydistribution':
+                    print('Warning: use argument [linthresh] in "add_data" instead')
+            elif key == 'ysymlogscale': self.ysymlogscale = value
+            elif key == 'ylinthresh': self.ylinthresh = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
         # self.ax.tick_params(axis='both', direction='in', which='both')
         # locmin = tck.LogLocator(base=10.0, subs=(.2,.4,.6,.8), numticks=12)
         # self.ax.yaxis.set_minor_locator(locmin)
         # self.ax.yaxis.set_minor_formatter(tck.NullFormatter())
         # self.ax.yaxis.set_minor_locator(tck.AutoMinorLocator(4))
-        self.ax.minorticks_on()
-        if not all(x is None for x in self.xlim): self.ax.set_xlim(self.xlim)
-        if not all(x is None for x in self.ylim): self.ax.set_ylim(self.ylim)
-        if self.ylogscale: self.ax.set_yscale('log')
-        elif self.ysymlogscale: self.ax.set_yscale('symlog', linthresh=self.ylinthresh)
-        if self.xlogscale: self.ax.set_xscale('log')
-        elif self.xsymlogscale: self.ax.set_xscale('symlog', linthresh=self.xlinthresh)
-        self.ax.plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
-                     ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
+        if nplot == None:
+            self.ax.minorticks_on()
+            if not all(x is None for x in self.xlim): self.ax.set_xlim(self.xlim)
+            if not all(x is None for x in self.ylim): self.ax.set_ylim(self.ylim)
+            if self.ylogscale: self.ax.set_yscale('log')
+            elif self.ysymlogscale: self.ax.set_yscale('symlog', linthresh=self.ylinthresh)
+            if self.xlogscale: self.ax.set_xscale('log')
+            elif self.xsymlogscale: self.ax.set_xscale('symlog', linthresh=self.xlinthresh)
+        elif type(nplot) == int:
+            self.axes[nplot].minorticks_on()
+            if not all(x is None for x in self.xlim): self.axes[nplot].set_xlim(self.xlim)
+            if not all(x is None for x in self.ylim): self.axes[nplot].set_ylim(self.ylim)
+            if self.ylogscale: self.axes[nplot].set_yscale('log')
+            elif self.ysymlogscale: self.axes[nplot].set_yscale('symlog', linthresh=self.ylinthresh)
+            if self.xlogscale: self.axes[nplot].set_xscale('log')
+            elif self.xsymlogscale: self.axes[nplot].set_xscale('symlog', linthresh=self.xlinthresh)
+        elif type(nplot) == list and type(nplot[0]) == int:
+            for n in nplot:
+                self.axes[nplot].minorticks_on()
+                if not all(x is None for x in self.xlim): self.axes[n].set_xlim(self.xlim)
+                if not all(x is None for x in self.ylim): self.axes[n].set_ylim(self.ylim)
+                if self.ylogscale: self.axes[n].set_yscale('log')
+                elif self.ysymlogscale: self.axes[n].set_yscale('symlog', linthresh=self.ylinthresh)
+                if self.xlogscale: self.axes[n].set_xscale('log')
+                elif self.xsymlogscale: self.axes[n].set_xscale('symlog', linthresh=self.xlinthresh)
+        else:
+            print('ArgumentTypeError: \"nplot\" should be type: int or list of int, but {} was given'.format(str(type(nplot))))
 
     def _set_fmt(self):
-        if self.grid: self.ax.grid(True)
-        if self.legend: self.ax.legend()
-        self.ax.set(xlabel=self.axislabel[0], ylabel=self.axislabel[1])
-        if self.textbox != '':
-            props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-            self.ax.text(0.00001, 1.05, self.textbox, fontsize=10, verticalalignment='top',
-                         transform=self.ax.transAxes, bbox=props)
+        if self.ax != None:
+            if self.grid: self.ax.grid(True)
+            if self.legend: self.ax.legend()
+            self.ax.set(xlabel=self.axislabel[0], ylabel=self.axislabel[1])
+            if self.textbox != '':
+                props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
+                self.ax.text(0.00001, 1.05, self.textbox, fontsize=10, verticalalignment='top',
+                            transform=self.ax.transAxes, bbox=props)
+        else:
+            for ax in self.axes:
+                if self.grid: ax.grid(True)
+                if self.legend and not self.legendcomb: ax.legend()
+                if len(self.xlabelnplot) == 0: ax.set(xlabel=self.axislabel[0])
+                if len(self.ylabelnplot) == 0: ax.set(ylabel=self.axislabel[1])
+            for n in self.xlabelnplot: self.axes[n].set(xlabel=self.axislabel[0])
+            for n in self.ylabelnplot: self.axes[n].set(ylabel=self.axislabel[1])
+            if self.legend and self.legendcomb:
+                bbox = self.axes[0].get_position()
+                self.axes[0].set_position([bbox.x0, bbox.y0, bbox.width * 0.9, bbox.height])
+                self.axes[0].legend(loc='lower left', bbox_to_anchor=(0, 1.02, 1, 0.2))
+            # ax.legend(title='Node index', loc='center left', bbox_to_anchor=(1, 0.5))
+
+    def make_plot(self, nplot=0):
+        if self.ax != None:
+            self.ax.plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
+                        ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
+        else:
+            self.axes[nplot].plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
+                        ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
 
     def save_fig(self, filename: str, label='', ext='png', path='', tight_layout=True):
         """Save figure into file.
@@ -2023,7 +2130,37 @@ class Grapher:
 
     def return_fig(self):
         self._set_fmt()
-        return self.fig, self.ax
+        if self.ax != None: return self.fig, self.ax
+        else: return self.fig, self.axes
+
+    def save_plot_info(self, filename: str, label='', path=''):
+        """Save plot information, e.g., binsize, data points
+
+        Parameters
+        ----------
+        filename : str
+            name of the output file
+        label : str, optional
+            label attached at the end of the file name, by default ''
+        path : str, optional
+            path to the output file, by default ''
+        """
+        if path != '': os.mkdir(path)
+        if label != '': filename += ' ({})'.format(label)
+        filepath = os.path.join(path, filename)
+        self._save_plot_info(filepath)
+        if self.grapher_mode == 'densitydistribution':
+            self._save_data_points(filepath)
+
+    def _save_plot_info(self, filepath: str):
+        with open(filepath+'_plotinfo.txt', 'w') as f:
+            if self.grapher_mode == 'densitydistribution':
+                f.write('bin size:\t{}\n'.format(self.binsize))
+
+    def _save_data_points(self, filepath: str):
+        with open(filepath+'_datapoints.txt', 'w') as f:
+            for x, y in zip(self.x, self.y):
+                f.write('{}\t{}\n'.format(x, y))
 
 class GraphDataRelation(Grapher):
 
@@ -2057,6 +2194,7 @@ class GraphDataRelation(Grapher):
         self.m           = 'o'
         self.ms          = 1.5
         self.ls          = 'none'
+        self.grapher_mode = 'datarelation'
 
     def add_data(self, xdata, ydata, **kwargs):
         """Add data to be plotted.
@@ -2067,33 +2205,9 @@ class GraphDataRelation(Grapher):
             data in x-axis
         ydata : np.ndarray
             data in y-axis
-        xlim : tuple
-            horizontal plot range, default: fitted to data
-        ylim : tuple
-            vertical plot range, default: fitted to data
-        xlogscale : bool
-            use log scale in x-axis, default: `False`
-        ylogscale : bool
-            use log scale in y-axis, default: `False`
-        xsymlogscale : bool
-            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
-        xlinthresh : float
-            the threshold of linear range when using `xsymlogscale`, default: 1
-        ysymlogscale : bool
-            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
-        ylinthresh : float
-            the threshold of linear range when using `ysymlogscale`, default: 1
         """
         for key, value in kwargs.items():
-            if key == 'xlim': self.xlim = value
-            elif key == 'ylim': self.ylim = value
-            elif key == 'xlogscale': self.xlogscale = value
-            elif key == 'ylogscale': self.ylogscale = value
-            elif key == 'xsymlogscale': self.xsymlogscale = value
-            elif key == 'xlinthresh': self.xlinthresh = value
-            elif key == 'ysymlogscale': self.ysymlogscale = value
-            elif key == 'ylinthresh': self.ylinthresh = value
-            else: print('The optional argument: [{}] is not supported'.format(key))
+            print('Warning: the optional argument [{}] is not supported'.format(key))
         self.x = np.array(xdata).flatten()
         self.y = np.array(ydata).flatten()
 
@@ -2144,6 +2258,7 @@ class GraphMatrixRelation(GraphDataRelation):
         self.onlyOffDiag = False
         self.onlyDiag    = False
         self.ms          = 1
+        self.grapher_mode = 'matrixrelation'
 
     def add_data(self, xdata, ydata, **kwargs):
         """Add data to be plotted.
@@ -2158,35 +2273,11 @@ class GraphMatrixRelation(GraphDataRelation):
             show only off-diagonal elements, default: `False`
         onlyDiag : bool
             show only diagonal elements, default: `False`
-        xlim : tuple
-            horizontal plot range, default: fitted to data
-        ylim : tuple
-            vertical plot range, default: fitted to data
-        xlogscale : bool
-            use log scale in x-axis, default: `False`
-        ylogscale : bool
-            use log scale in y-axis, default: `False`
-        xsymlogscale : bool
-            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
-        xlinthresh : float
-            the threshold of linear range when using `xsymlogscale`, default: 1
-        ysymlogscale : bool
-            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
-        ylinthresh : float
-            the threshold of linear range when using `ysymlogscale`, default: 1
         """
         for key, value in kwargs.items():
             if key == 'onlyDiag': self.onlyDiag = value
             elif key == 'onlyOffDiag': self.onlyOffDiag = value
-            elif key == 'xlim': self.xlim = value
-            elif key == 'ylim': self.ylim = value
-            elif key == 'xlogscale': self.xlogscale = value
-            elif key == 'ylogscale': self.ylogscale = value
-            elif key == 'xsymlogscale': self.xsymlogscale = value
-            elif key == 'xlinthresh': self.xlinthresh = value
-            elif key == 'ysymlogscale': self.ysymlogscale = value
-            elif key == 'ylinthresh': self.ylinthresh = value
-            else: print('The optional argument: [{}] is not supported'.format(key))
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
         self.xdata = np.array(xdata)
         self.ydata = np.array(ydata)
         if self.onlyOffDiag: # keep only off-diagonals
@@ -2239,73 +2330,74 @@ class GraphDensityDistribution(Grapher):
         self.ms = 7.5
         self.lw = 2
         self.ls = '-'
+        self.grapher_mode = 'densitydistribution'
 
-    def add_data(self, data, binsize: float, **kwargs):
+    def add_data(self, data, binsize: float, normalize_to_factor=1.0, **kwargs):
         """Add data to be plotted.
 
         Parameters
         ----------
         data : np.ndarray
             data
-        xlim : tuple
-            horizontal plot range, default: fitted to data
-        ylim : tuple
-            vertical plot range, default: fitted to data
-        xlogscale : bool
-            use log scale in x-axis, default: `False`
-        ylogscale : bool
-            use log scale in y-axis, default: `False`
-        xsymlogscale : bool
-            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
-        xlinthresh : float
-            the threshold of linear range when using `xsymlogscale`, default: 1
+        binsize : float
+            bin size
+        normalize_to_factor : float
+            normalize density distribution to a factor, default: 1.0 (normalized)
+        logdata : bool
+            use log scale in x-data, force logscale in x-axis, default: `False`
+        symlogdata : bool
+            use symmetric log scale in x-data (should be used with `linthresh`), force symlogscale in x-axis, default: `False`
+        linthresh : float
+            the threshold of linear range when using `symlogdata`, default: 1
         """
         for key, value in kwargs.items():
-            if key == 'xlim': self.xlim = value
-            elif key == 'ylim': self.ylim = value
-            elif key == 'xlogscale': self.xlogscale = value
-            elif key == 'ylogscale': self.ylogscale = value
-            elif key == 'xsymlogscale': self.xsymlogscale = value
-            elif key == 'xlinthresh': self.xlinthresh = value
-            else: print('The optional argument: [{}] is not supported'.format(key))
+            if key == 'logdata': self.xlogscale = value
+            elif key == 'symlogdata': self.xsymlogscale = value
+            elif key == 'linthresh': self.xlinthresh = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        self.binsize = binsize
         self.xdata = np.array(data).flatten()
         min_elem = np.amin(self.xdata); max_elem = np.amax(self.xdata)
         if self.xlogscale:
             pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
-            number_of_bins = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / binsize)
+            number_of_bins = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self.binsize)
             density, binedge = np.histogram(
                 data, bins=np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)
-                                       + number_of_bins*binsize, number_of_bins)
+                                       + number_of_bins*self.binsize, number_of_bins)
             )
         elif self.xsymlogscale:
             # pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
             # neg_nearzero_datum = np.amax(np.array(data)[np.array(data) < 0])
             pos_nearzero_datum = self.xlinthresh
             neg_nearzero_datum = -self.xlinthresh
-            lin_bins_amt = math.ceil((max_elem - min_elem) / binsize)
-            pos_bins_amt = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / binsize)
-            neg_bins_amt = math.ceil((math.log10(-min_elem) - math.log10(-neg_nearzero_datum)) / binsize)
+            lin_bins_amt = math.ceil((max_elem - min_elem) / self.binsize)
+            pos_bins_amt = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self.binsize)
+            neg_bins_amt = math.ceil((math.log10(-min_elem) - math.log10(-neg_nearzero_datum)) / self.binsize)
             linbins = np.linspace(neg_nearzero_datum, pos_nearzero_datum, lin_bins_amt)
-            pos_logbins = np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)+pos_bins_amt*binsize, pos_bins_amt)
-            neg_logbins = -np.flip(np.logspace(math.log10(-neg_nearzero_datum), math.log10(-neg_nearzero_datum)+neg_bins_amt*binsize, neg_bins_amt))
+            pos_logbins = np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)+pos_bins_amt*self.binsize, pos_bins_amt)
+            neg_logbins = -np.flip(np.logspace(math.log10(-neg_nearzero_datum), math.log10(-neg_nearzero_datum)+neg_bins_amt*self.binsize, neg_bins_amt))
             density, binedge = np.histogram(data, bins=np.concatenate((neg_logbins, linbins, pos_logbins)), density=True)
         else:
-            bins_amt = math.ceil((max_elem - min_elem) / binsize)
-            density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*binsize, bins_amt), density=True)
+            bins_amt = math.ceil((max_elem - min_elem) / self.binsize)
+            density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*self.binsize, bins_amt), density=True)
         density = np.array(density, dtype=float)
         density /= np.dot(density, np.diff(binedge)) # normalization
+        if normalize_to_factor != 1: density *= normalize_to_factor
         self.x = (binedge[1:] + binedge[:-1]) / 2
         self.y = density
 
-    def draw_gaussian(self, **kwargs):
+    def draw_gaussian(self, nplot=0, **kwargs):
         c = 'r'; lw = 2.5
         for key, value in kwargs.items():
             if key == 'color' or key == 'c': c = value
-            if key == 'lineweight' or key == 'lw': lw = value
+            elif key == 'lineweight' or key == 'lw': lw = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
         mu = np.mean(self.xdata); sigma = np.std(self.xdata)
         norm_xval = np.linspace(mu - 4*sigma, mu + 4*sigma, 150)
-        self.ax.plot(norm_xval, stats.norm.pdf(norm_xval, mu, sigma), '--', c=c, lw=lw, label='Normal distribution', zorder=1)
-
+        if self.ax != None:
+            self.ax.plot(norm_xval, stats.norm.pdf(norm_xval, mu, sigma), '--', c=c, lw=lw, label='Normal distribution', zorder=1)
+        else:
+            self.axes[nplot].plot(norm_xval, stats.norm.pdf(norm_xval, mu, sigma), '--', c=c, lw=lw, label='Normal distribution', zorder=1)
 
 
 # Other tools
