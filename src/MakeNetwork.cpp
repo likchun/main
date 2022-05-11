@@ -1,3 +1,21 @@
+/**
+ * @file MakeNetwork.cpp
+ * @author likchun@outlook.com
+ * @brief modify the synaptic weights of a neural network
+ * @version 1.0(1)
+ * @date 2022-05-11
+ * 
+ * @copyright free to use
+ * 
+ */
+
+/**
+ * change log
+ * ver 1.0 - init
+ * 
+ */
+
+
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -164,7 +182,6 @@ public:
     const std::string input_file_synaptic_weights;
     const std::string synaptic_weights_file_input_format;
     const char        synaptic_weights_file_delimiter;
-    const int         network_size;
 
     const double k;
     const double d;
@@ -177,16 +194,11 @@ public:
         input_file_synaptic_weights(input_param[0]), // input_file_synaptic_weights
         synaptic_weights_file_input_format(input_param[1]), // synaptic_weights_file_input_format
         synaptic_weights_file_delimiter(input_param[2] == "tab" ? '\t' : "space" ? ' ' : input_param[3].c_str()[0]), // synaptic_weights_file_delimiter
-        network_size(stoi(input_param[3])), // network_size
 
-        k(stod(input_param[4])),
-        d(stod(input_param[5])),
-        cmp(
-            input_param[6] == "lessthan" ? -1 :
-            input_param[6] == "greaterthan" ? 1 :
-            0
-        ),
-        x(stod(input_param[7]))
+        k(stod(input_param[3])),
+        d(stod(input_param[4])),
+        cmp(input_param[5] == "lessthan" ? -1 : input_param[5] == "greaterthan" ? 1 : 0),
+        x(stod(input_param[6]))
 
     { std::cout << "OKAY, changes are imported from \"" << filename << "\"\n"; }
 
@@ -217,18 +229,21 @@ private:
 
 void import_synaptic_weights(
     const Parameters &par,
-    Matrix &synaptic_weights
+    std::vector<std::vector<double>> &synaptic_weights
 )
 {
+    int network_size;
     std::ifstream ifs;
     ifs.open(par.input_file_synaptic_weights, std::ios::in);
     if (ifs.is_open()) {
-        std::vector<std::vector<double>> synaptic_weights_temp;
+        std::vector<std::vector<double>> _synaptic_weights;
         std::vector<double> row_buf;
         std::string line, elem;
         if (par.synaptic_weights_file_input_format == "nonzero") {
+            std::getline(ifs, line, '\n');
+            network_size = stoi(line);
             synaptic_weights = std::vector<std::vector<double>>(
-                par.network_size, std::vector<double>(par.network_size, 0));
+                network_size, std::vector<double>(network_size, 0));
             while(std::getline(ifs, line, '\n')) {
                 std::stringstream ss(line);
                 while(std::getline(ss, elem, par.synaptic_weights_file_delimiter)) {
@@ -236,21 +251,22 @@ void import_synaptic_weights(
                         row_buf.push_back(std::stof(tools::remove_whitespace(elem)));
                     }
                 }
-                synaptic_weights_temp.push_back(row_buf);
+                _synaptic_weights.push_back(row_buf);
                 row_buf.clear();
             }
-            for (size_t i = 0; i < synaptic_weights_temp.size(); ++i) {
-                synaptic_weights[static_cast<int>(synaptic_weights_temp[i][1])-1][static_cast<int>(synaptic_weights_temp[i][0])-1] = synaptic_weights_temp[i][2];
+            for (size_t i = 0; i < _synaptic_weights.size(); ++i) {
+                synaptic_weights[static_cast<int>(_synaptic_weights[i][1])-1][static_cast<int>(_synaptic_weights[i][0])-1] = _synaptic_weights[i][2];
             }
         } else if (par.synaptic_weights_file_input_format == "full") {
             while(std::getline(ifs, line, '\n')) {
                 std::stringstream ss(line);
                 while(std::getline(ss, elem, par.synaptic_weights_file_delimiter)) {
                     row_buf.push_back(stof(elem)); }
-                synaptic_weights_temp.push_back(row_buf);
+                _synaptic_weights.push_back(row_buf);
                 row_buf.clear();
             }
-            synaptic_weights = synaptic_weights_temp;
+            synaptic_weights = _synaptic_weights;
+            network_size = synaptic_weights.size();
         }
         ifs.close();
     } else {
@@ -269,11 +285,12 @@ void export_synaptic_weights(
     ofs.open(filename, std::ios::out);
     if (ofs.is_open()) {
         if (simplified_format) {
+            ofs << synaptic_weights.size();
             for (size_t j = 0; j < synaptic_weights.size(); ++j) {
                 for (size_t i = 0; i < synaptic_weights.size(); ++i) {
                     if (synaptic_weights[i][j] != 0) {
-                        ofs << j << delimiter << i << delimiter;
-                        ofs << synaptic_weights[i][j] << '\n';
+                        ofs << '\n' << j+1 << delimiter << i+1 << delimiter;
+                        ofs << synaptic_weights[i][j];
                     }
                 }
             }
