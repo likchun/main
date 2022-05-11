@@ -2,8 +2,8 @@
  * @file IzhikevichModel.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons with Izhikevich's model
- * @version 1.0(1)
- * @date 2022-05-09
+ * @version 1.0.1(2)
+ * @date 2022-05-10
  * 
  * @copyright none, free to use
  * 
@@ -26,7 +26,7 @@
 #define DEFAULT_OUTPUT_FILENAME_SPIKE_TIME      "spkt.txt"
 #define DEFAULT_OUTPUT_FILENAME_VOLTAGE_SERIES  "memp.bin"
 
-std::string code_ver = "Version 1.0\nBuild 1\nLast Update 09 May 2022";
+std::string code_ver = "Version 1.0.1\nBuild 2\nLast Update 10 May 2022";
 
 
 namespace datatype_precision
