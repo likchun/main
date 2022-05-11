@@ -1,14 +1,15 @@
 [Caution: do not modify anything except the values after the equal signs]
 
 [Synaptic Weights Importation]
-synaptic weights matrix filename    = DIV66_gji
+synaptic weights matrix filename    = insert_your_matrix_filename_here, e.g., DIV66_gji
 matrix format (full/nonzero)#       = nonzero
 matrix delimiter (tab/space/;/...)  = space
-matrix size (for nonzero format)    = 4095
 matrix multiplying factor [beta]    = 2
 
 [Data Exportation]
-export voltage time series          = false
+export voltage  time series         = false
+export recovery time series         = false
+export current  time series         = false
 
 [Numerical Settings]
 simulation duration          [T]    = 10000
