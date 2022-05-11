@@ -2,8 +2,8 @@
  * @file IzhikevichModel.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons with Izhikevich's model
- * @version 1.1.0(3)
- * @date 2022-05-11
+ * @version 1.1.1(4)
+ * @date 2022-05-12
  * 
  * @copyright free to use
  * 
@@ -61,7 +61,7 @@ struct  stat st = {0};
 #define CREATE_OUTPUT_DIRECTORY(__DIR)          if (stat(__DIR, &st) == -1) { mkdir(__DIR, 0700); }
 #endif
 
-std::string code_ver = "Version 1.1.0\nBuild 3\nLast Update 11 May 2022";
+std::string code_ver = "Version 1.1.1\nBuild 4\nLast Update 12 May 2022";
 
 
 namespace datatype_precision
@@ -894,6 +894,9 @@ int main(int argc, char **argv)
     const int    network_size = _network_size;
     const double delta_time = par.delta_time;
     const double driving_current = par.driving_current;
+    const bool   exportVoltageTimeSeries = par.exportVoltageTimeSeries;
+    const bool   exportRecoverTimeSeries = par.exportRecoverTimeSeries;
+    const bool   exportCurrentTimeSeries = par.exportCurrentTimeSeries;
 
     display_info(par, network_size);
     CREATE_OUTPUT_DIRECTORY(DEFAULT_OUTPUT_FOLDER)
@@ -983,7 +986,7 @@ int main(int argc, char **argv)
             ) + driving_current;
         }
 
-        if (par.exportVoltageTimeSeries)    // Export voltage time series data for all nodes (for >TIMESERIES_BUFF)
+        if (exportVoltageTimeSeries)    // Export voltage time series data for all nodes (for >TIMESERIES_BUFF)
         {
             for (auto &v : membrane_potential) { voltage_time_series_buffer.push_back(v); }
             // Flush to output file and clear buffer
@@ -995,7 +998,7 @@ int main(int argc, char **argv)
                 voltage_time_series_buffer.clear();
             }
         }
-        if (par.exportRecoverTimeSeries)    // Export recovery time series data for all nodes (for >TIMESERIES_BUFF)
+        if (exportRecoverTimeSeries)    // Export recovery time series data for all nodes (for >TIMESERIES_BUFF)
         {
             for (auto &v : recovery_variable) { recover_time_series_buffer.push_back(v); }
             // Flush to output file and clear buffer
@@ -1007,7 +1010,7 @@ int main(int argc, char **argv)
                 recover_time_series_buffer.clear();
             }
         }
-        if (par.exportCurrentTimeSeries)    // Export current time series data for all nodes (for >TIMESERIES_BUFF)
+        if (exportCurrentTimeSeries)    // Export current time series data for all nodes (for >TIMESERIES_BUFF)
         {
             for (auto &v : synaptic_current) { current_time_series_buffer.push_back(v); }
             // Flush to output file and clear buffer
@@ -1033,7 +1036,7 @@ int main(int argc, char **argv)
     export_file_spike_data(par, spike_timesteps);
     std::cout << "OKAY, spike data exported" << std::endl;
 
-    if (par.exportVoltageTimeSeries)   // Export volatge time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    if (exportVoltageTimeSeries)   // Export volatge time series data for all nodes (for <TIMESERIES_BUFF and residue)
     {
         ofs_voltage_timeseries.write(
             reinterpret_cast<char*>(&voltage_time_series_buffer[0]),
@@ -1044,7 +1047,7 @@ int main(int argc, char **argv)
         }
         std::cout << "OKAY, membrane potential time series exported" << std::endl;
     }
-    if (par.exportRecoverTimeSeries)   // Export recovery variable time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    if (exportRecoverTimeSeries)   // Export recovery variable time series data for all nodes (for <TIMESERIES_BUFF and residue)
     {
         ofs_recover_timeseries.write(
             reinterpret_cast<char*>(&recover_time_series_buffer[0]),
@@ -1055,7 +1058,7 @@ int main(int argc, char **argv)
         }
         std::cout << "OKAY, recovery variable time series exported" << std::endl;
     }
-    if (par.exportCurrentTimeSeries)   // Export current time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    if (exportCurrentTimeSeries)   // Export current time series data for all nodes (for <TIMESERIES_BUFF and residue)
     {
         ofs_current_timeseries.write(
             reinterpret_cast<char*>(&current_time_series_buffer[0]),
