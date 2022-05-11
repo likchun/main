@@ -473,6 +473,7 @@ void suppress_synaptic_weights(
 void display_info(const Parameters &par)
 {
     std::cout << "------------------------------\n"
+              << "|network filename:    " << par.input_file_synaptic_weights << '\n'
               << "|network size (N):    " << par.network_size << '\n'
               << "|simulation time (T): " << par.simulation_time << '\n'
               << "|delta time (dt):     " << par.delta_time << '\n'
@@ -482,7 +483,7 @@ void display_info(const Parameters &par)
     if (par.driving_current != 0) {
         std::cout << "|driving current:     " << par.driving_current << '\n';
     }
-    if (par.suppression_level != 0 || par.synaptic_weights_multiplying_factor != 0) {
+    if (par.suppression_level != 0 || par.synaptic_weights_multiplying_factor != 1) {
         std::cout << "|synaptic weight changes:\n";
         if (par.synaptic_weights_multiplying_factor != 0) {
             std::cout << "|>multiplying factor: " << par.synaptic_weights_multiplying_factor << '\n';
@@ -814,6 +815,7 @@ int main(int argc, char **argv)
 
     std::cout << "Running simulation of Izhikevich model ...\n";
     if (par.exportTimeSeries) { std::cout << "Export time series? YES\n"; }
+    std::cout << "...patience...\n";
     clock_t lap = clock();
 
     /* Main calculation loop */
