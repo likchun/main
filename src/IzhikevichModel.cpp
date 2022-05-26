@@ -519,7 +519,7 @@ void suppress_synaptic_weights(
 
 void display_info(const Parameters &par, const int network_size)
 {
-    std::cout << "------------------------------\n"
+    std::cout << "---------------------------------------------\n"
               << "|network filename:    " << par.input_file_synaptic_weights << '\n'
               << "|network size (N):    " << network_size << '\n'
               << "|simulation time (T): " << par.simulation_time << '\n'
@@ -540,7 +540,7 @@ void display_info(const Parameters &par, const int network_size)
                       << "|>suppression type:   " << (par.suppressed_link_type == -1 ? "inh" : (par.suppressed_link_type == 1 ? "exc" : "unknown")) << '\n';
         }
     }
-    std::cout << "------------------------------" << std::endl;
+    std::cout << "---------------------------------------------" << std::endl;
 }
 
 void display_current_datetime()
@@ -881,6 +881,12 @@ int main(int argc, char **argv)
     display_current_datetime();
     std::cout << "...\nProgram started\n";
     clock_t beg = clock();
+
+    if (argc > 1) {
+        for (int i = 1; i < argc; ++i) {
+            if (std::string(argv[i]) == "-bypass") {}
+        }
+    }
 
     const Parameters par(NO_MAIN_ARGUMENT ? DEFAULT_INPUT_FILENAME_PARAMETERS : argv[1]);
 
