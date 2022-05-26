@@ -62,8 +62,8 @@ class Vector_fl(object):
     def push(self, x):
         Vector_fl.lib.vector_push_back_fl(self.vector, c_float(x))
 
-    def read_from_binary(self, file_name, node_index: int, matrix_size: int):
-        return Vector_fl.lib.read_from_binary_fl(self.vector, c_char_p(file_name.encode('utf-8')), c_int(node_index), c_int(matrix_size))
+    def read_from_binary(self, file_name, neuron_index: int, matrix_size: int):
+        return Vector_fl.lib.read_from_binary_fl(self.vector, c_char_p(file_name.encode('utf-8')), c_int(neuron_index), c_int(matrix_size))
 
     def to_numpy_array(self):
         return np.array([x for x in self])
