@@ -2,12 +2,17 @@
 NeuronLib
 =========
 
+Version: alpha01
+Last update: 20 May 2022
+
+In progress: update class "NeuralNetwork"
+
 A library containing useful tools for analyzing data from neural network simulations.
 
 Provides:
-  1. `class Network` for extracting information about neural networks, such as connection probability, degree
-  2. `class NeualDynamics` for graph plotting of neural dynamics, such as firing rate and ISI distribution
-  3. `class Grapher` for drawing density distribution, matrix relation plots
+  1. `class Grapher` for drawing density distribution, matrix relation plots
+  2. `class NeuralNetwork` for extracting information about neural networks, such as connection probability, degree
+  3. `class NeualDynamics` for graph plotting of neural dynamics, such as firing rate and ISI distribution
   4. Other useful tools, such as reading/writing matrix from/into files, matrix and array operations
 
 How to use the library
@@ -33,7 +38,8 @@ import math
 import numpy as np
 import matplotlib as mpl
 from scipy import linalg, stats
-from matplotlib import pyplot as plt, collections as mcol, ticker as tck
+from matplotlib import pyplot as plt, collections as mcol, ticker as tck, patches
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from lib.cppvector import Vector_fl
 
 
@@ -42,179 +48,319 @@ def font_settings_for_matplotlib(font: dict):
     plt.rc('font', **font)
     mpl.rcParams['mathtext.default'] = 'regular'
 
-font_settings_for_matplotlib({
-    'family':'Charter',
-    'size'  :20
-})
-
-
-"""Inset axes example"""
-# inset_axes = inset_axes(ax,
-#                         width="70%", # width = 30% of parent_bbox
-#                         height="70%", # height : 1 inch
-#                         loc=1,
-#                         borderpad=3,
-#                         bbox_to_anchor=(.34, .34, .75, .576),
-#                         bbox_transform=ax.transAxes)
-# inset_axes.tick_params(labelleft=True, labelbottom=True)
-# inset_axes.grid(True)
-# inset_axes.set(xscale='log')
+font_settings = {
+    'family' : 'Charter',
+    'size'   : 20
+}
+font_settings_for_matplotlib(font_settings)
 
 
 class Grapher:
 
     def __init__(self) -> None:
-        self.grapher_mode = 'grapher'
+        self._grapher_mode = 'grapher'
 
-        self.xdata        = None
-        self.ydata        = None
-        self.fig          = None
-        self.axes         = None
-        self.ax           = None
-        self.x            = None
-        self.y            = None
+        self.xdata         = None
+        self.ydata         = None
+        self.fig           = None
+        self.axes          = []
+        self.ax            = None
+        self._x            = []
+        self._y            = []
  
-        self.c            = 'b'
-        self.m            = '^'
-        self.ms           = 5
-        self.ls           = 'none'
-        self.lw           = 2
-        self.plotlabel    = ''
-        self.axislabel    = ['','']
-        self.xlabelnplot  = []
-        self.ylabelnplot  = []
-        self.grid         = True
-        self.legend       = False
-        self.legendcomb   = False
-        self.textbox      = ''
+        self._c            = 'b'
+        self._m            = '^'
+        self._ms           = 5
+        self._ls           = 'none'
+        self._lw           = 2
+        self._title        = ''
+        self._plotlabel    = ''
+        self._axislabel    = ['','']
+        self._xlabelnplot  = []
+        self._ylabelnplot  = []
+        self._grid         = True
+        self._gridnplot    = []
+        self._minortick    = True
+        self._legend       = False
+        self._legendnplot  = None
+        self._legendcomb   = False
+        self._textbox      = ''
 
-        self.binsize      = None
+        self._binsize      = None
 
-        self.xlim         = (None, None)
-        self.ylim         = (None, None)
-        self.xlogscale    = False
-        self.ylogscale    = False
-        self.xsymlogscale = False
-        self.xlinthresh   = 1
-        self.ysymlogscale = False
-        self.ylinthresh   = 1
+        self._xlim         = (None, None)
+        self._ylim         = (None, None)
+        self._xlogscale    = False
+        self._ylogscale    = False
+        self._xsymlogscale = False
+        self._xlinthresh   = 1
+        self._ysymlogscale = False
+        self._ylinthresh   = 1
 
-    def import_fig(self, ax, fig=None):
-        self.fig = fig
-        self.ax = ax
+    def create_plot(self, nrows=1, ncols=1, figsize=(7, 7), **options):
+        """Create plot/subplots, invoke before adding data.
 
-    def create_fig(self, nrows=1, ncols=1, figsize=(7, 7), dpi=150):
+        Parameters
+        ----------
+        figsize : tuple, optional
+            figure size, by default `(7, 7)`
+
+        nrows, ncols : int
+            number of rows/columns of the subplot grid, by default `1`
+
+        sharex, sharey : bool or {`'none'`, `'all'`, `'row'`, `'col'`}
+            control sharing of properties among x or y axes, by default `False`:
+            - `True` or `'all'`: x- or y-axis will be shared among all subplots
+            - `False` or `'none'`: each subplot x- or y-axis will be independent
+            - `'row'`: each subplot row will share an x- or y-axis
+            - `'col'`: each subplot column will share an x- or y-axis
+
+        hratio, wratio : array of int
+            define the relative height of rows/width of columns,
+            e.g., hratio=`[1, 3, 2]` for nrows=3
+
+        dpi : int, optional
+            DPI, by default `150`
+        """
+        sharex = False
+        sharey = False
+        dpi = 150
+        hratio = None
+        wratio = None
+        for key, value in options.items():
+            if key == 'sharex': sharex = value
+            elif key == 'sharey': sharey = value
+            elif key == 'hratio': hratio = value
+            elif key == 'wratio': wratio = value
         self.__init__()
-        if nrows == 1 and ncols == 1: self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi)
-        else: self.fig, self.axes = plt.subplots(nrows, ncols, figsize=figsize, dpi=dpi)
+        if nrows == 1 and ncols == 1: self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi, gridspec_kw={'height_ratios':hratio, 'width_ratios':wratio})
+        else:
+            self.fig, self.axes = plt.subplots(nrows, ncols, sharex=sharex, sharey=sharey, figsize=figsize, dpi=dpi, gridspec_kw={'height_ratios':hratio, 'width_ratios':wratio})
+            self.axes = self.axes.flatten()
 
-    def stylize_plot(self, **kwargs):
+    def inset_to_parent_plot(self, parent_plot: object, **inset_format):
+        """Add to a parent plot as an inset plot.
+
+        Parameters
+        ----------
+        parent_plot : object of Grapher
+            the parent plot to be inset into
+        **inset_format : dict, required
+            inset axes formatting (see Notes)
+
+        Notes
+        -----
+        inset axes formatting
+        - width : float or str, e.g., `1` : 1 inch ; `"70%"` : 70% of parent_bbox
+        - height : float or str, e.g., `1` : 1 inch ; `"70%"` : 70% of parent_bbox
+        - loc : int, `1` or `2` or `3` or `4`
+        - borderpad : float
+        - bbox_to_anchor : tuple, e.g., `(.34, .34, .75, .576)`
+
+        Examples
+        --------
+        >>> g = GraphHistogramDistribution()
+        ... g.create_plot()
+        ... g.add_data(data, 0.2)
+        ... g.make_plot()
+        ... 
+        >>> inset_format = {
+        ...     "width":"70%",
+        ...     "height":"70%",
+        ...     "loc":1,
+        ...     "borderpad":3,
+        ...     "bbox_to_anchor":(.34, .34, .75, .576),
+        ... }
+        ... g_inset = GraphHistogramDistribution()
+        ... g_inset.inset_to_parent_plot(g, **inset_format)
+        ... g_inset.add_data(data, 0.2)
+        ... g_inset.stylize_plot(dict(c='r'))
+        ... g_inset.make_plot()
+        ... 
+        >>> g.show_plot()
+        """
+        self.ax = inset_axes(parent_plot.ax, **inset_format, bbox_transform=parent_plot.ax.transAxes)
+        self.ax.tick_params(labelleft=True, labelbottom=True)
+        self.fig = parent_plot.fig
+
+    def add_data(self, xdata, ydata, **kwargs):
+        """Add data to be plotted.
+
+        Parameters
+        ----------
+        xdata : numpy.ndarray
+            data in x-axis
+        ydata : numpy.ndarray
+            data in y-axis
+        """
+        for key, value in kwargs.items():
+            print('Warning: the optional argument [{}] is not supported'.format(key))
+        self._x = np.array(xdata).flatten()
+        self._y = np.array(ydata).flatten()
+        if len(self._x) != len(self._y):
+            err = 'DataValueError: xdata and ydata must have same size but xdata with size: {} and ydata with size: {} are given'.format(len(self._x), len(self._y))
+            raise ValueError(err)
+
+    def stylize_plot(self, style):
         """Stylize matplotlib axes.
 
         Parameters
         ----------
         color | c : str
-            color of markers and lines, e.g., `'b', 'C1', 'darkorange'`
+            color of markers and lines, e.g., `'b', 'C1', 'darkorange'`\n
         marker | m : str
-            marker style, e.g., `'o', '^', 'D', ','`
+            marker style, e.g., `'o', '^', 'D', ','`\n
         markersize | ms : float
-            marker size
+            marker size\n
         linestyle | ls : str
-            line style, e.g., `'-', '--', '-.', ':'`
+            line style, e.g., `'-', '--', '-.', ':'`\n
         lineweight | lw : float
-            line weight
-        grid : bool
-            grid on/off, default: `True`
+            line weight\n
         """
-        for key, value in kwargs.items():
-            if key == 'color' or key == 'c': self.c = value
-            elif key == 'marker' or key == 'm': self.m = value
-            elif key == 'markersize' or key == 'ms': self.ms = value
-            elif key == 'linestyle' or key == 'ls': self.ls = value
-            elif key == 'lineweight' or key == 'lw': self.lw = value
-            elif key == 'grid': self.grid = value
+        for key, value in style.items():
+            if key == 'color' or key == 'c': self._c = value
+            elif key == 'marker' or key == 'm': self._m = value
+            elif key == 'markersize' or key == 'ms': self._ms = value
+            elif key == 'linestyle' or key == 'ls': self._ls = value
+            elif key == 'lineweight' or key == 'lw': self._lw = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-    def label_plot(self, **kwargs):
+    def label_plot(self, label):
         """Label matplotlib axes.
 
         Parameters
         ----------
+        title : str
+            figure title\n
         plotlabel : str
-            plot label to be displayed in legend
+            plot label to be displayed in legend\n
         axislabel : list of str
-            x-axis and y-axis label, e.g., `['time', 'voltage']`
+            x-axis and y-axis labels, e.g., `['time', 'voltage']`\n
         xlabel : str
-            x-axis label
+            x-axis label\n
         ylabel : str
-            y-axis label
-        xlabelnplot : list of int
-            show y-axis label in selected sub-plots
-        ylabelnplot : list of int
-            show y-axis label in selected sub-plots
-        legend : bool
-            legend on/off, default: `False`
+            y-axis label\n
+        xlabelnplot : list of int | int
+            show y-axis label in selected subplots, otherwise disable\n
+        ylabelnplot : list of int | int
+            show y-axis label in selected subplots, otherwise disable\n
+        legend : bool | list
+            - bool: legend on/off, default: `False`
+            - list: list of plotlabels (for single plot)
+            - list: `[(subplotindex, plotlabels ...), ...]` (for subplots)\n
         legendcombine : bool
-            combine legends if there are multiple subplots, default: `False`
-        textbox : str
-            plot information to be displayed at top-left corner
+            combine legends if there are multiple subplots, default: `False`\n
+        textbox : str | list
+            information to be displayed at top-left corner
+            - list: `[(subplotindex, text ...), ...]` (for subplots)\n
         """
-        for key, value in kwargs.items():
-            if key == 'plotlabel': self.plotlabel = value
-            elif key == 'axislabel':
-                self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
-                self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
-            elif key == 'xlabel': self.axislabel[0] = '{} {}'.format(value[0], self.axislabel[0])
-            elif key == 'ylabel': self.axislabel[1] = '{} {}'.format(value[1], self.axislabel[1])
-            elif key == 'xlabelnplot': self.xlabelnplot = value
-            elif key == 'ylabelnplot': self.ylabelnplot = value
-            elif key == 'legend': self.legend = value
-            elif key == 'legendcombine': self.legendcomb = value
-            elif key == 'textbox': self.textbox = value
+        for key, value in label.items():
+            if key == 'title' or key == 'tl':
+                self._title = value
+                if type(self._title) != str: raise TypeError('the argument [title]/[tl] must be of type "str"')
+            elif key == 'plotlabel' or key == 'pl':
+                self._plotlabel = value
+                if type(self._plotlabel) != str: raise TypeError('the argument [plotlabel]/[pl] must be of type "str"')
+            elif key == 'axislabel' or key == 'al':
+                if type(self._axislabel) != list: raise TypeError('the argument [axislabel]/[al] must be of type "list of str"')
+                self._axislabel[0] = '{}'.format(value[0])
+                self._axislabel[1] = '{}'.format(value[1])
+                if type(self._axislabel[0]) != str and type(self._axislabel[1]) != str: raise TypeError('the argument [axislabel]/[al] must be of type "list of str"')
+            elif key == 'xlabel' or key == 'xl':
+                self._axislabel[0] = '{}'.format(value)
+                if type(self._axislabel[0]) != str: raise TypeError('the argument [xlabel]/[xl] must be of type "str"')
+            elif key == 'ylabel' or key == 'yl':
+                self._axislabel[1] = '{}'.format(value)
+                if type(self._axislabel[1]) != str: raise TypeError('the argument [ylabel]/[yl] must be of type "str" but {} is given instead'.format(type(self._axislabel[1])))
+            elif key == 'xlabelnplot' or key == 'xln':
+                self._xlabelnplot = value
+                if type(self._xlabelnplot) != list and type(self._xlabelnplot) != int: raise TypeError('the argument [xlabelnplot]/[xln] must be of type "list of int" or "int" but {} is given instead'.format(type(self._xlabelnplot)))
+            elif key == 'ylabelnplot' or key == 'yln':
+                self._ylabelnplot = value
+                if type(self._ylabelnplot) != list and type(self._ylabelnplot) != int: raise TypeError('the argument [ylabelnplot]/[yln] must be of type "list of int" or "int" but {} is given instead'.format(type(self._ylabelnplot)))
+            elif key == 'legend' or key == 'lg':
+                self._legend = value
+                if type(self._legend) != bool and type(self._legend) != list: raise TypeError('the argument [legend]/[lg] must be of type "bool" or "list" but {} is given instead'.format(type(self._legend)))
+            elif key == 'legendnplot' or key == 'lgn':
+                self._legendnplot = value
+                print('Warning: the optional argument [legendnplot] is not yet supported')
+            elif key == 'legendcombine' or key == 'lgc':
+                self._legendcomb = value
+                if type(self._legendcomb) != bool: raise TypeError('the argument [legendcomb]/[lgc] must be of type "bool"')
+            elif key == 'textbox' or key == 'tb':
+                self._textbox = value
+                if type(self._textbox) != str and type(self._textbox) != list: raise TypeError('the argument [textbox]/[tb] must be of type "str" or "list of str"')
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        if type(self._xlabelnplot) == int: self._xlabelnplot = [self._xlabelnplot]
+        elif type(self._xlabelnplot) == list: pass
+        else: raise TypeError('the argument [xlabelnplot]/[xln] must be of type "list of int" or "int" but {} is given instead'.format(type(self._xlabelnplot)))
+        if type(self._ylabelnplot) == int: self._ylabelnplot = [self._ylabelnplot]
+        elif type(self._ylabelnplot) == list: pass
+        else: raise TypeError('the argument [ylabelnplot]/[yln] must be of type "list of int" or "int" but {} is given instead'.format(type(self._ylabelnplot)))
 
-    def set_scale(self, nplot=None, **kwargs):
-        """Generate a plot with supplied data.
+    def set_scale(self, scale, nplot=None):
+        """Set scale of matplotlib axes.
 
         Parameters
         ----------
         nplot : int
-            set the scale of the n-th sub-plot if there are multiple sub-plots
+            set the scale of the n-th sub-plot if there are multiple subplots\n
+        grid : bool
+            grid on/off, default: `True`\n
+        gridnplot : list of int
+            the indexes of subplot whose grid is on, default: all grids on\n
+        minortick : bool
+            minortick on/off, default: `True`\n
         xlim : tuple
-            horizontal plot range, default: fitted to data
+            horizontal plot range, default: fitted to data\n
         ylim : tuple
-            vertical plot range, default: fitted to data
+            vertical plot range, default: fitted to data\n
         xlogscale : bool
-            use log scale in x-axis, default: `False`
+            use log scale in x-axis, default: `False`\n
         ylogscale : bool
-            use log scale in y-axis, default: `False`
+            use log scale in y-axis, default: `False`\n
         xsymlogscale : bool
-            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`
+            use symmetric log scale in x-axis (should be used with `xlinthresh`), default: `False`\n
         xlinthresh : float
-            the threshold of linear range when using `xsymlogscale`, default: 1
+            the threshold of linear range when using `xsymlogscale`, default: `1`\n
         ysymlogscale : bool
-            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`
+            use symmetric log scale in y-axis (should be used with `ylinthresh`), default: `False`\n
         ylinthresh : float
-            the threshold of linear range when using `ysymlogscale`, default: 1
+            the threshold of linear range when using `ysymlogscale`, default: `1`\n
         """
-        for key, value in kwargs.items():
-            if key == 'xlim': self.xlim = value
-            elif key == 'ylim': self.ylim = value
-            elif key == 'xlogscale':
-                self.xlogscale = value
-                if self.grapher_mode == 'densitydistribution':
-                    print('Warning: to show data points in log scale, use argument [logdata] in "add_data" instead')
-            elif key == 'ylogscale': self.ylogscale = value
+        for key, value in scale.items():
+            if key == 'grid' or key == 'gd':
+                self._grid = value
+                if type(self._grid) != bool: raise TypeError('the argument [grid]/[gd] must be of type "bool"')
+            elif key == 'gridnplot' or key == 'gdn':
+                self._gridnplot = value
+                if type(self._gridnplot) != list: raise TypeError('the argument [gridnplot] must be of type "list"')
+            elif key == 'minortick':
+                self._minortick = value
+                if type(self._minortick) != bool: raise TypeError('the argument [minortick] must be of type "bool"')
+            elif key == 'xlim': self._xlim = value
+            elif key == 'ylim': self._ylim = value
+            elif key == 'xlogscale' or key == 'xlg':
+                self._xlogscale = value
+                if type(self._xlogscale) != bool: raise TypeError('the argument [xlogscale]/[xlg] must be of type "bool"')
+                # if self._grapher_mode == 'densitydistribution':
+                #     print('Warning: to show data points in log scale, use argument [logdata] in "add_data" instead')
+            elif key == 'ylogscale' or key == 'ylg':
+                self._ylogscale = value
+                if type(self._ylogscale) != bool: raise TypeError('the argument [ylogscale]/[ylg] must be of type "bool"')
             elif key == 'xsymlogscale':
-                self.xsymlogscale = value
-                if self.grapher_mode == 'densitydistribution':
-                    print('Warning: to show data points in log scale, use argument [symlogdata] in "add_data" instead')
+                self._xsymlogscale = value
+                if type(self._xsymlogscale) != bool: raise TypeError('the argument [xsymlogscale] must be of type "bool"')
+                # if self._grapher_mode == 'densitydistribution':
+                #     print('Warning: to show data points in log scale, use argument [symlogdata] in "add_data" instead')
             elif key == 'xlinthresh':
-                self.xlinthresh = value
-                if self.grapher_mode == 'densitydistribution':
+                self._xlinthresh = value
+                if self._grapher_mode == 'densitydistribution':
                     print('Warning: use argument [linthresh] in "add_data" instead')
-            elif key == 'ysymlogscale': self.ysymlogscale = value
-            elif key == 'ylinthresh': self.ylinthresh = value
+            elif key == 'ysymlogscale':
+                self._ysymlogscale = value
+                if type(self._ysymlogscale) != bool: raise TypeError('the argument [ysymlogscale] must be of type "bool"')
+            elif key == 'ylinthresh': self._ylinthresh = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
         # self.ax.tick_params(axis='both', direction='in', which='both')
         # locmin = tck.LogLocator(base=10.0, subs=(.2,.4,.6,.8), numticks=12)
@@ -222,94 +368,158 @@ class Grapher:
         # self.ax.yaxis.set_minor_formatter(tck.NullFormatter())
         # self.ax.yaxis.set_minor_locator(tck.AutoMinorLocator(4))
         if nplot == None:
-            self.ax.minorticks_on()
-            if not all(x is None for x in self.xlim): self.ax.set_xlim(self.xlim)
-            if not all(x is None for x in self.ylim): self.ax.set_ylim(self.ylim)
-            if self.ylogscale: self.ax.set_yscale('log')
-            elif self.ysymlogscale: self.ax.set_yscale('symlog', linthresh=self.ylinthresh)
-            if self.xlogscale: self.ax.set_xscale('log')
-            elif self.xsymlogscale: self.ax.set_xscale('symlog', linthresh=self.xlinthresh)
+            if self.ax == None:
+                for ax in self.axes:
+                    if self._minortick: ax.minorticks_on()
+                    else: ax.minorticks_off()
+                    if not all(x is None for x in self._xlim): ax.set_xlim(self._xlim)
+                    if not all(x is None for x in self._ylim): ax.set_ylim(self._ylim)
+                    if self._ylogscale: ax.set_yscale('log')
+                    elif self._ysymlogscale: ax.set_yscale('symlog', linthresh=self._ylinthresh)
+                    if self._xlogscale: ax.set_xscale('log')
+                    elif self._xsymlogscale: ax.set_xscale('symlog', linthresh=self._xlinthresh)
+            else:
+                if self._minortick: self.ax.minorticks_on()
+                else: self.ax.minorticks_off()
+                if not all(x is None for x in self._xlim): self.ax.set_xlim(self._xlim)
+                if not all(x is None for x in self._ylim): self.ax.set_ylim(self._ylim)
+                if self._ylogscale: self.ax.set_yscale('log')
+                elif self._ysymlogscale: self.ax.set_yscale('symlog', linthresh=self._ylinthresh)
+                if self._xlogscale: self.ax.set_xscale('log')
+                elif self._xsymlogscale: self.ax.set_xscale('symlog', linthresh=self._xlinthresh)
         elif type(nplot) == int:
-            self.axes[nplot].minorticks_on()
-            if not all(x is None for x in self.xlim): self.axes[nplot].set_xlim(self.xlim)
-            if not all(x is None for x in self.ylim): self.axes[nplot].set_ylim(self.ylim)
-            if self.ylogscale: self.axes[nplot].set_yscale('log')
-            elif self.ysymlogscale: self.axes[nplot].set_yscale('symlog', linthresh=self.ylinthresh)
-            if self.xlogscale: self.axes[nplot].set_xscale('log')
-            elif self.xsymlogscale: self.axes[nplot].set_xscale('symlog', linthresh=self.xlinthresh)
+            if self._minortick: self.axes[nplot].minorticks_on()
+            else: self.axes[nplot].minorticks_off()
+            if not all(x is None for x in self._xlim): self.axes[nplot].set_xlim(self._xlim)
+            if not all(x is None for x in self._ylim): self.axes[nplot].set_ylim(self._ylim)
+            if self._ylogscale: self.axes[nplot].set_yscale('log')
+            elif self._ysymlogscale: self.axes[nplot].set_yscale('symlog', linthresh=self._ylinthresh)
+            if self._xlogscale: self.axes[nplot].set_xscale('log')
+            elif self._xsymlogscale: self.axes[nplot].set_xscale('symlog', linthresh=self._xlinthresh)
         elif type(nplot) == list and type(nplot[0]) == int:
             for n in nplot:
-                self.axes[nplot].minorticks_on()
-                if not all(x is None for x in self.xlim): self.axes[n].set_xlim(self.xlim)
-                if not all(x is None for x in self.ylim): self.axes[n].set_ylim(self.ylim)
-                if self.ylogscale: self.axes[n].set_yscale('log')
-                elif self.ysymlogscale: self.axes[n].set_yscale('symlog', linthresh=self.ylinthresh)
-                if self.xlogscale: self.axes[n].set_xscale('log')
-                elif self.xsymlogscale: self.axes[n].set_xscale('symlog', linthresh=self.xlinthresh)
+                if self._minortick: self.axes[nplot].minorticks_on()
+                else: self.axes[nplot].minorticks_off()
+                if not all(x is None for x in self._xlim): self.axes[n].set_xlim(self.xlim)
+                if not all(x is None for x in self._ylim): self.axes[n].set_ylim(self.ylim)
+                if self._ylogscale: self.axes[n].set_yscale('log')
+                elif self._ysymlogscale: self.axes[n].set_yscale('symlog', linthresh=self._ylinthresh)
+                if self._xlogscale: self.axes[n].set_xscale('log')
+                elif self._xsymlogscale: self.axes[n].set_xscale('symlog', linthresh=self._xlinthresh)
         else:
             print('ArgumentTypeError: \"nplot\" should be type: int or list of int, but {} was given'.format(str(type(nplot))))
 
     def _set_fmt(self):
+        textbox_fontsize_multiplier = 0.75
+        if self._minortick: plt.minorticks_on()
+        else: plt.minorticks_off()
         if self.ax != None:
-            if self.grid: self.ax.grid(True)
-            if self.legend: self.ax.legend()
-            self.ax.set(xlabel=self.axislabel[0], ylabel=self.axislabel[1])
-            if self.textbox != '':
+            if self._grid:
+                self.ax.grid(True, which='major', axis='both', color='0.6')
+                self.ax.grid(True, which='minor', axis='both', color='0.85', linestyle='--')
+            else: self.ax.grid(False)
+            if type(self._legend) == list: self.ax.legend(self._legend)
+            elif self._legend: self.ax.legend()
+            self.ax.set(xlabel=self._axislabel[0], ylabel=self._axislabel[1])
+            if self._textbox != '':
                 props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                self.ax.text(0.00001, 1.05, self.textbox, fontsize=10, verticalalignment='top',
-                            transform=self.ax.transAxes, bbox=props)
-        else:
+                self.ax.text(0.00001, 1.05, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                             verticalalignment='top', transform=self.ax.transAxes, bbox=props)
+        elif len(self.axes) != 0:
+            if self._textbox == '': _titlepad = 15
+            else: _titlepad = 30
+            if self._title != '': self.axes[0].set_title(self._title, pad=_titlepad, loc='left')
+            if self._textbox != '':
+                if type(self._textbox) == str:
+                    for n in range((self.axes)):
+                        props = dict(boxstyle='round', pad=0.08, facecolor='white', edgecolor='none', alpha=0.75)
+                        self.axes[n].text(0.00001, 1.09, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                                            verticalalignment='top', transform=self.axes[0].transAxes, bbox=props)
+                elif type(self._textbox) == list:
+                    for tb in self._textbox:
+                        props = dict(boxstyle='round', pad=0.08, facecolor='white', edgecolor='none', alpha=0.75)
+                        self.axes[tb[0]].text(0.00001, 1.09, tb[1], fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                                              verticalalignment='top', transform=self.axes[tb[0]].transAxes, bbox=props)
             for ax in self.axes:
-                if self.grid: ax.grid(True)
-                if self.legend and not self.legendcomb: ax.legend()
-                if len(self.xlabelnplot) == 0: ax.set(xlabel=self.axislabel[0])
-                if len(self.ylabelnplot) == 0: ax.set(ylabel=self.axislabel[1])
-            for n in self.xlabelnplot: self.axes[n].set(xlabel=self.axislabel[0])
-            for n in self.ylabelnplot: self.axes[n].set(ylabel=self.axislabel[1])
-            if self.legend and self.legendcomb:
+                if self._grid:
+                    ax.grid(True, which='major', axis='both', color='0.6')
+                    ax.grid(True, which='minor', axis='both', color='0.85', linestyle='--')
+                else: ax.grid(False)
+                if type(self._legend) == bool and self._legend and not self._legendcomb: ax.legend()
+                if len(self._xlabelnplot) == 0: ax.set(xlabel=self._axislabel[0])
+                if len(self._ylabelnplot) == 0: ax.set(ylabel=self._axislabel[1])
+            for n in self._xlabelnplot: self.axes[n].set(xlabel=self._axislabel[0])
+            for n in self._ylabelnplot: self.axes[n].set(ylabel=self._axislabel[1])
+            if len(self._gridnplot) != 0:
+                for n in range((self.axes)):
+                    if n in self._gridnplot:
+                        self.axes[n].grid(True, which='major', axis='both', color='0.6')
+                        self.axes[n].grid(True, which='minor', axis='both', color='0.85', linestyle='--')
+                    else: self.axes[n].grid(False)
+            if type(self._legend) == list:
+                for lg in self._legend: self.axes[lg[0]].legend(lg[1:])
+            if self._legend and self._legendcomb:
                 bbox = self.axes[0].get_position()
                 self.axes[0].set_position([bbox.x0, bbox.y0, bbox.width * 0.9, bbox.height])
                 self.axes[0].legend(loc='lower left', bbox_to_anchor=(0, 1.02, 1, 0.2))
             # ax.legend(title='Node index', loc='center left', bbox_to_anchor=(1, 0.5))
+            pass
 
     def make_plot(self, nplot=0):
-        if self.ax != None:
-            self.ax.plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
-                        ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
-        else:
-            self.axes[nplot].plot(self.x, self.y, c=self.c, marker=self.m, markersize=self.ms,
-                        ls=self.ls, lw=self.lw, label=self.plotlabel, zorder=2)
+        """Make plot, invoke before exporting plot.
 
-    def save_fig(self, filename: str, label='', ext='png', path='', tight_layout=True):
-        """Save figure into file.
+        Parameters
+        ----------
+        nplot : int, optional
+            the index of subplot to be taken effect on, by default 0
+        """
+        # self._set_fmt()
+        if self.ax != None:
+            if self._x.any() == None or len(self._x) == 0 or self._y.any() == None or len(self._y) == 0:
+                self.ax.add_patch(patches.Rectangle((0, 0), 1, 1, color='1', alpha=0.75, fill=True, clip_on=False, transform=self.ax.transAxes, zorder=5))
+                self.ax.text(0.5, 0.5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.ax.transAxes, zorder=6)
+            else:
+                self.ax.plot(self._x, self._y, c=self._c, marker=self._m, markersize=self._ms,
+                    ls=self._ls, lw=self._lw, label=self._plotlabel, zorder=2)
+        elif len(self.axes) != 0:
+            if self._x.any() == None or len(self._x) == 0 or self._y.any() == None or len(self._y) == 0:
+                self.axes[nplot].add_patch(patches.Rectangle((0.01, 0.01), 0.98, 0.98, color='1', alpha=0.75, fill=True, clip_on=False, transform=self.axes[nplot].transAxes, zorder=5))
+                self.axes[nplot].text(0.5, 0.5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.axes[nplot].transAxes, zorder=6)
+            else:
+                self.axes[nplot].plot(self._x, self._y, c=self._c, marker=self._m, markersize=self._ms,
+                    ls=self._ls, lw=self._lw, label=self._plotlabel, zorder=2)
+        else:
+            err = 'the graph has not been initialized, please use method "create_plot" to create plot/subplots'
+            raise Exception(err)
+
+    def save_plot(self, filename: str, label='', ext='png', path='', tight_layout=True):
+        """Save plot into a file.
 
         Parameters
         ----------
         filename : str
             name of the output file
         label : str, optional
-            label attached at the end of the file name, by default ''
+            label attached at the end of the file name, by default `''`
         ext : str, optional
-            file extension, by default 'png'
+            file extension, by default `'png'`
         path : str, optional
-            path to the output file, by default ''
+            path to the output file, by default `''`
         tight_layout : bool, optional
-            enable tight layout, by default True
+            enable tight layout, by default `True`
         """
         self._set_fmt()
         if label != '': filename += '_' + label
         if ext != '': filename += '.' + ext
-        if tight_layout: plt.tight_layout()
+        if tight_layout: self.fig.tight_layout()
         self.fig.savefig(os.path.join(path, filename))
 
-    def show_fig(self):
+    def show_plot(self):
+        """Preview plot in matplotlib build-in console.
+        """
         self._set_fmt()
+        self.fig.tight_layout()
         plt.show()
-
-    def return_fig(self):
-        self._set_fmt()
-        if self.ax != None: return self.fig, self.ax
-        else: return self.fig, self.axes
 
     def save_plot_info(self, filename: str, label='', path=''):
         """Save plot information, e.g., binsize, data points
@@ -323,83 +533,93 @@ class Grapher:
         path : str, optional
             path to the output file, by default ''
         """
-        if path != '': os.mkdir(path)
+        try:
+            if path != '': os.mkdir(path)
+        except OSError: pass
         if label != '': filename += ' ({})'.format(label)
         filepath = os.path.join(path, filename)
         self._save_plot_info(filepath)
-        if self.grapher_mode == 'densitydistribution':
+        if self._grapher_mode == 'densitydistribution':
             self._save_data_points(filepath)
 
     def _save_plot_info(self, filepath: str):
         with open(filepath+'_plotinfo.txt', 'w') as f:
-            if self.grapher_mode == 'densitydistribution':
-                f.write('bin size:\t{}\n'.format(self.binsize))
+            if self._grapher_mode == 'densitydistribution':
+                f.write('bin size:\t{}\n'.format(self._binsize))
 
     def _save_data_points(self, filepath: str):
         with open(filepath+'_datapoints.txt', 'w') as f:
-            for x, y in zip(self.x, self.y):
+            for x, y in zip(self._x, self._y):
                 f.write('{}\t{}\n'.format(x, y))
 
 class GraphDataRelation(Grapher):
 
     def __init__(self) -> None:
-        """Graph the relation between two matrices.
+        """Graph the relation between two sets of data.
 
-        Step:
-        1. `creat_fig()` or `import_fig()`
+        Notes
+        -----
+
+        Steps (functions to be called in order):
+        1. `create_plot()`
         2. `add_data()`
         3. (optional)
-        4. `plot()`
-        5. `save_fig()` or `return_fig()` or `show_fig()`
+        4. `make_plot()`
+        5. `save_plot()` or `show_plot()`
         
-        Optional:
+        Optional (step 4):
         - `stylize_plot()`
         - `label_plot()`
+        - `set_scale()`
         - `draw_xyline()`
         - `fit_linear()`
 
-        Example:
+        Examples
+        --------
         >>> A = [[1, 3], [2, 2]]
         ... B = [[2, 3], [1, 4]]
-        >>> g = GraphMatrixRelation()
-        ... g.create_fig()
+        >>> g = GraphDataRelation()
+        ... g.create_plot()
         ... g.add_data(A, B)
         ... coef = g.fit_linear()
-        ... g.plot()
-        ... g.show_fig()
+        ... g.make_plot()
+        ... g.show_plot()
         """
         super().__init__()
-        self.m           = 'o'
-        self.ms          = 1.5
-        self.ls          = 'none'
-        self.grapher_mode = 'datarelation'
+        self._m            = 'o'
+        self._ms           = 1.5
+        self._ls           = 'none'
+        self._grapher_mode = 'datarelation'
 
     def add_data(self, xdata, ydata, **kwargs):
         """Add data to be plotted.
 
         Parameters
         ----------
-        xdata : np.ndarray
+        xdata : numpy.ndarray
             data in x-axis
-        ydata : np.ndarray
+        ydata : numpy.ndarray
             data in y-axis
         """
         for key, value in kwargs.items():
             print('Warning: the optional argument [{}] is not supported'.format(key))
-        self.x = np.array(xdata).flatten()
-        self.y = np.array(ydata).flatten()
+        self._x = np.array(xdata).flatten()
+        self._y = np.array(ydata).flatten()
+        if len(self._x) != len(self._y):
+            err = 'DataValueError: xdata and ydata must have same size but xdata with size: {} and ydata with size: {} are given'.format(len(self._x), len(self._y))
+            raise ValueError(err)
 
     def draw_xyline(self, color='k'):
-        min_elem = min(np.amin(self.x), np.amin(self.y))
-        max_elem = max(np.amax(self.x), np.amax(self.y))
+        min_elem = min(np.amin(self._x), np.amin(self._y))
+        max_elem = max(np.amax(self._x), np.amax(self._y))
         elem_range = np.linspace(min_elem, max_elem)
         self.ax.plot(elem_range, elem_range, c=color, ls='--', lw=1, zorder=1)
 
     def fit_linear(self, color='darkorange') -> tuple:
-        min_elem = min(np.amin(self.x), np.amin(self.y))
-        max_elem = max(np.amax(self.x), np.amax(self.y))
+        min_elem = min(np.amin(self._x), np.amin(self._y))
+        max_elem = max(np.amax(self._x), np.amax(self._y))
         elem_range = np.linspace(min_elem, max_elem)
-        coef = np.polyfit(self.x, self.y, 1)  # slope = coef[0], y-intercept = coef[1]
+        coef = np.polyfit(self._x, self._y, 1)  # slope = coef[0], y-intercept = coef[1]
         poly1d_fn = np.poly1d(coef)
         self.ax.plot(elem_range, poly1d_fn(elem_range), c=color, ls='-.', lw=1.25, zorder=3)
         return coef
@@ -409,43 +629,49 @@ class GraphMatrixRelation(GraphDataRelation):
     def __init__(self) -> None:
         """Graph the relation between two matrices.
 
-        Step:
-        1. `creat_fig()` or `import_fig()`
+        Notes
+        -----
+
+        Steps (functions to be called in order):
+        1. `create_plot()`
         2. `add_data()`
         3. (optional)
-        4. `plot()`
-        5. `save_fig()` or `return_fig()` or `show_fig()`
+        4. `make_plot()`
+        5. `save_fig()` or `show_fig()`
         
-        Optional:
+        Optional (step 4):
         - `stylize_plot()`
         - `label_plot()`
+        - `set_scale()`
         - `draw_xyline()`
         - `fit_linear()`
 
-        Example:
+        Examples
+        --------
+
         >>> A = [[1, 3], [2, 2]]
         ... B = [[2, 3], [1, 4]]
         >>> g = GraphMatrixRelation()
-        ... g.create_fig()
+        ... g.create_plot()
         ... g.add_data(A, B)
         ... coef = g.fit_linear()
-        ... g.plot()
-        ... g.show_fig()
+        ... g.make_plot()
+        ... g.show_plot()
         """
         super().__init__()
-        self.onlyOffDiag = False
-        self.onlyDiag    = False
-        self.ms          = 1
-        self.grapher_mode = 'matrixrelation'
+        self._onlyOffDiag  = False
+        self._onlyDiag     = False
+        self._ms           = 1
+        self._grapher_mode = 'matrixrelation'
 
     def add_data(self, xdata, ydata, **kwargs):
         """Add data to be plotted.
 
         Parameters
         ----------
-        xdata : np.ndarray
+        xdata : numpy.ndarray
             data in x-axis
-        ydata : np.ndarray
+        ydata : numpy.ndarray
             data in y-axis
         onlyOffDiag : bool
             show only off-diagonal elements, default: `False`
@@ -453,64 +679,73 @@ class GraphMatrixRelation(GraphDataRelation):
             show only diagonal elements, default: `False`
         """
         for key, value in kwargs.items():
-            if key == 'onlyDiag': self.onlyDiag = value
-            elif key == 'onlyOffDiag': self.onlyOffDiag = value
+            if key == 'onlyDiag': self._onlyDiag = value
+            elif key == 'onlyOffDiag': self._onlyOffDiag = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
         self.xdata = np.array(xdata)
         self.ydata = np.array(ydata)
         if self.onlyOffDiag: # keep only off-diagonals
-            self.x = self._rm_diag(self.xdata).flatten()
-            self.y = self._rm_diag(self.ydata).flatten()
-            self.axislabel[0] += ' (off-diagonals)'
-            self.axislabel[1] += ' (off-diagonals)'
-        elif self.onlyDiag: # keep only diagonals
-            self.x = np.diag(self.xdata)
-            self.y = np.diag(self.ydata)
-            self.axislabel[0] += ' (diagonals)'
-            self.axislabel[1] += ' (diagonals)'
+            self._x = self._rm_diag(self.xdata).flatten()
+            self._y = self._rm_diag(self.ydata).flatten()
+            self._axislabel[0] += ' (off-diagonals)'
+            self._axislabel[1] += ' (off-diagonals)'
+        elif self._onlyDiag: # keep only diagonals
+            self._x = np.diag(self.xdata)
+            self._y = np.diag(self.ydata)
+            self._axislabel[0] += ' (diagonals)'
+            self._axislabel[1] += ' (diagonals)'
         else:
-            self.x = self.xdata.flatten()
-            self.y = self.ydata.flatten()
+            self._x = self.xdata.flatten()
+            self._y = self.ydata.flatten()
+        if self.xdata.shape != self.ydata.shape:
+            err = 'DataValueError: xdata and ydata must be matrices of same size but xdata with size: {} and ydata with size: {} are given'.format(self.xdata.shape, self.ydata.shape)
+            raise ValueError(err)
 
     def _rm_diag(self, A: np.ndarray) -> np.ndarray:
         if A.shape[0] == A.shape[1]:
             return A[~np.eye(A.shape[0],dtype=bool)].reshape(A.shape[0],-1)
         else:
-            err = 'ArgumentValueError: the input matrix must be square.'
-            print(err); exit(1)
+            err = 'DataValueError: the input matrix must be square in order to remove its diagonal elements'
+            raise ValueError(err)
 
-class GraphDensityDistribution(Grapher):
+class GraphHistogramDistribution(Grapher):
 
     def __init__(self) -> None:
         """Graph the density distribution of a set of data.
 
-        Step:
-        1. `creat_fig()` or `import_fig()`
+        Steps (functions to be called in order):
+        1. `create_plot()`
         2. `add_data()`
         3. (optional)
-        4. `plot()`
-        5. `save_fig()` or `return_fig()` or `show_fig()`
-
-        Optional:
+        4. `make_plot()`
+        5. `save_plot()` or `show_plot()`
+        
+        Optional (step 4):
         - `stylize_plot()`
         - `label_plot()`
-        - `draw_gaussian()`
+        - `set_scale()`
+        - `fit_gaussian()`
 
-        Example:
+        Examples
+        --------
+
         >>> A = np.random.normal(0, 10, 5000)
-        >>> g = GraphMatrixRelation()
-        ... g.create_fig()
+        >>> g = GraphHistogramDistribution()
+        ... g.create_plot()
         ... g.add_data(A, 0.1)
-        ... g.plot()
-        ... g.show_fig()
+        ... g.make_plot()
+        ... g.show_plot()
         """
         super().__init__()
-        self.ms = 7.5
-        self.lw = 2
-        self.ls = '-'
-        self.grapher_mode = 'densitydistribution'
+        self._ms = 7.5
+        self._lw = 2
+        self._ls = '-'
+        self._density_normalize = False
+        self._normalize_to_factor = 1
+        self._axislabel[1] = 'Number of occurrence'
+        self._grapher_mode = 'histogramdistribution'
 
-    def add_data(self, data, binsize: float, normalize_to_factor=1.0, **kwargs):
+    def add_data(self, data, binsize: float, **kwargs):
         """Add data to be plotted.
 
         Parameters
@@ -529,42 +764,58 @@ class GraphDensityDistribution(Grapher):
             the threshold of linear range when using `symlogdata`, default: 1
         """
         for key, value in kwargs.items():
-            if key == 'logdata': self.xlogscale = value
-            elif key == 'symlogdata': self.xsymlogscale = value
-            elif key == 'linthresh': self.xlinthresh = value
+            if key == 'normalize_to_factor': self._normalize_to_factor = value
+            elif key == 'logdata': self._xlogscale = value
+            elif key == 'symlogdata': self._xsymlogscale = value
+            elif key == 'linthresh': self._xlinthresh = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
-        self.binsize = binsize
-        self.xdata = np.array(data).flatten()
-        min_elem = np.amin(self.xdata); max_elem = np.amax(self.xdata)
-        if self.xlogscale:
-            pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
-            number_of_bins = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self.binsize)
-            density, binedge = np.histogram(
-                data, bins=np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)
-                                       + number_of_bins*self.binsize, number_of_bins)
-            )
-        elif self.xsymlogscale:
-            # pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
-            # neg_nearzero_datum = np.amax(np.array(data)[np.array(data) < 0])
-            pos_nearzero_datum = self.xlinthresh
-            neg_nearzero_datum = -self.xlinthresh
-            lin_bins_amt = math.ceil((max_elem - min_elem) / self.binsize)
-            pos_bins_amt = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self.binsize)
-            neg_bins_amt = math.ceil((math.log10(-min_elem) - math.log10(-neg_nearzero_datum)) / self.binsize)
-            linbins = np.linspace(neg_nearzero_datum, pos_nearzero_datum, lin_bins_amt)
-            pos_logbins = np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)+pos_bins_amt*self.binsize, pos_bins_amt)
-            neg_logbins = -np.flip(np.logspace(math.log10(-neg_nearzero_datum), math.log10(-neg_nearzero_datum)+neg_bins_amt*self.binsize, neg_bins_amt))
-            density, binedge = np.histogram(data, bins=np.concatenate((neg_logbins, linbins, pos_logbins)), density=True)
+        if data.size == 0 or data.all() == None:
+            self._x, self._y = np.array([]), np.array([])
         else:
-            bins_amt = math.ceil((max_elem - min_elem) / self.binsize)
-            density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*self.binsize, bins_amt), density=True)
-        density = np.array(density, dtype=float)
-        density /= np.dot(density, np.diff(binedge)) # normalization
-        if normalize_to_factor != 1: density *= normalize_to_factor
-        self.x = (binedge[1:] + binedge[:-1]) / 2
-        self.y = density
+            self._binsize = binsize
+            self.xdata = np.array(data).flatten()
+            min_elem = np.amin(self.xdata); max_elem = np.amax(self.xdata)
+            if self._xlogscale:
+                pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
+                number_of_bins = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self._binsize)
+                density, binedge = np.histogram(
+                    data, bins=np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)
+                                        + number_of_bins*self._binsize, number_of_bins)
+                )
+            elif self._xsymlogscale:
+                # pos_nearzero_datum = np.amin(np.array(data)[np.array(data) > 0])
+                # neg_nearzero_datum = np.amax(np.array(data)[np.array(data) < 0])
+                pos_nearzero_datum = self._xlinthresh
+                neg_nearzero_datum = -self._xlinthresh
+                lin_bins_amt = math.ceil((max_elem - min_elem) / self.binsize)
+                pos_bins_amt = math.ceil((math.log10(max_elem) - math.log10(pos_nearzero_datum)) / self._binsize)
+                neg_bins_amt = math.ceil((math.log10(-min_elem) - math.log10(-neg_nearzero_datum)) / self._binsize)
+                linbins = np.linspace(neg_nearzero_datum, pos_nearzero_datum, lin_bins_amt)
+                pos_logbins = np.logspace(math.log10(pos_nearzero_datum), math.log10(pos_nearzero_datum)+pos_bins_amt*self._binsize, pos_bins_amt)
+                neg_logbins = -np.flip(np.logspace(math.log10(-neg_nearzero_datum), math.log10(-neg_nearzero_datum)+neg_bins_amt*self._binsize, neg_bins_amt))
+                density, binedge = np.histogram(data, bins=np.concatenate((neg_logbins, linbins, pos_logbins)), density=self._density_normalize)
+            else:
+                bins_amt = math.ceil((max_elem - min_elem) / self._binsize)
+                density, binedge = np.histogram(data, bins=np.linspace(min_elem, min_elem+bins_amt*self._binsize, bins_amt), density=self._density_normalize)
+            if self._density_normalize:
+                density = np.array(density, dtype=float)
+                density /= np.dot(density, np.diff(binedge)) # normalization
+                if self._normalize_to_factor != 1: density *= self._normalize_to_factor
+            self._x = (binedge[1:] + binedge[:-1]) / 2
+            self._y = density
 
-    def draw_gaussian(self, nplot=0, **kwargs):
+    def fit_gaussian(self, nplot=0, **kwargs):
+        """Fit the data with a Gaussian curve.
+
+        Parameters
+        ----------
+        nplot : int, optional
+            the index of subplot to be taken effect on, by default 0
+        color | c : str
+            color of markers and lines, default: `'r'`
+        lineweight | lw : float
+            line weight, default: `2.5`
+        """
         c = 'r'; lw = 2.5
         for key, value in kwargs.items():
             if key == 'color' or key == 'c': c = value
@@ -577,8 +828,48 @@ class GraphDensityDistribution(Grapher):
         else:
             self.axes[nplot].plot(norm_xval, stats.norm.pdf(norm_xval, mu, sigma), '--', c=c, lw=lw, label='Normal distribution', zorder=1)
 
+class GraphDensityDistribution(GraphHistogramDistribution):
 
-class Network:
+    def __init__(self) -> None:
+        """Graph the density distribution of a set of data.
+
+        Notes
+        -----
+
+        Steps (functions to be called in order):
+        1. `create_plot()`
+        2. `add_data()`
+        3. (optional)
+        4. `make_plot()`
+        5. `save_plot()` or `show_plot()`
+        
+        Optional (step 4):
+        - `stylize_plot()`
+        - `label_plot()`
+        - `set_scale()`
+        - `fit_gaussian()`
+
+        Examples
+        --------
+
+        >>> A = np.random.normal(0, 10, 5000)
+        >>> g = GraphDensityDistribution()
+        ... g.create_plot()
+        ... g.add_data(A, 0.1)
+        ... g.make_plot()
+        ... g.show_plot()
+        """
+        super().__init__()
+        self._ms = 7.5
+        self._lw = 2
+        self._ls = '-'
+        self._density_normalize = True
+        self._normalize_to_factor = 1
+        self._axislabel[1] = 'Probabitlity density'
+        self._grapher_mode = 'densitydistribution'
+
+
+class NeuralNetwork:
 
     def __init__(self, adjacency_matrix, input_folder=None, output_folder=None, delimiter='\t', number_of_neurons=4095, full_matrix_format=False):
         """Tools for analyzing networks.
@@ -1634,30 +1925,53 @@ class Network:
 
 class NeuralDynamics:
 
-    def __init__(self, input_folder=None, output_folder=None, spiking_data='spks.txt', config='cont.dat',
-                 membrane_potential='memp.bin', synaptic_current='curr.dat', delimiter='\t'):
-        input_path, self.output_path = self._init_input_output_path(input_folder, output_folder)
-        if type(config) == list:
-            self.spike_count, self.spike_times, self.config = self._init_spiking_data_from_file(spiking_data, config, delimiter, input_path)
-            # print('\'config\' input as a list of [N={}, dt={}, T={}].'.format(config[0], config[1], config[2]))
-        elif type(config) == str:
-            self.spike_count, self.spike_times, self.config = self._init_spiking_data_from_file(spiking_data, config, delimiter, input_path)
-            if input_folder == None: input_folder = 'current directory'
-            # print('\'config\' input from a local file: [{}] from [{}].'.format(config, input_folder))
+    def __init__(self, input_folder=None, output_folder=None, **options):
+        """A tool for analyzing neural dynamics.
+
+        Parameters
+        ----------
+        input_folder : str, optional
+            path of input folder, by default local folder
+        output_folder : str, optional
+            path of output folder, by default local folder
+
+        Raises
+        ------
+        TypeError
+            invalid argument type of `configuration`
+        """
+
+        configuration = 'cont.dat'
+        spiking_data_file = 'spks.txt'
+        membrane_potential_timeseries_file = 'memp.bin'
+        recovery_variable_timeseries_file = 'recv.bin'
+        synaptic_current_timeseries_file = 'curr.bin'
+        delimiter = '\t'
+        for key, value in options.items():
+            if key == 'configuration': configuration = value
+            elif key == 'spiking_data_file': spiking_data_file = value
+            elif key == 'membrane_potential_timeseries_file': membrane_potential_timeseries_file = value
+            elif key == 'recovery_variable_timeseries_file': recovery_variable_timeseries_file = value
+            elif key == 'synaptic_current_timeseries_file': synaptic_current_timeseries_file = value
+            elif key == 'delimiter': delimiter = value
+
+        input_path, self._output_path = self._init_input_output_path(input_folder, output_folder)
+        if type(configuration) == list:
+            self._spike_count, self._spike_times, self._config = self._init_spiking_data_from_file(spiking_data_file, configuration, delimiter, input_path)
+        elif type(configuration) == str:
+            self._spike_count, self._spike_times, self._config = self._init_spiking_data_from_file(spiking_data_file, configuration, delimiter, input_path)
         else:
             err = 'the input argument \"config\" must either be a list of [N, dt, T] or a string storing the path to a local file.'
             raise TypeError(err)
-        if input_path == None:
-            self.membrane_potential_file = membrane_potential
-            self.synaptic_current_file = synaptic_current
-        else:
-            self.membrane_potential_file = input_path+membrane_potential
-            self.synaptic_current_file = input_path+synaptic_current
-        print('Spiking data imported from a local file: \"{}\" in \"{}\".'.format(spiking_data, input_folder))
+        self._membrane_potential_timeseries_file = os.path.join(input_path, membrane_potential_timeseries_file)
+        self._recovery_variable_timeseries_file = os.path.join(input_path, recovery_variable_timeseries_file)
+        self._synaptic_current_timeseries_file = os.path.join(input_path, synaptic_current_timeseries_file)
+        if input_folder == '': input_folder = 'current directory'
+        print('Spiking data imported from a local file: \"{}\" in \"{}\".'.format(spiking_data_file, input_folder))
     
     def __del__(self): pass
 
-    def _init_input_output_path(self, input_folder: str, output_folder: str):
+    def _init_input_output_path(self, input_folder: str, output_folder: str) -> tuple:
         this_dir = os.path.dirname(os.path.abspath(__file__))
         index = this_dir.rfind('\\')
         if input_folder != None:
@@ -1672,13 +1986,13 @@ class NeuralDynamics:
         else: output_path = ''
         return input_path, output_path
 
-    def _init_spiking_data_from_file(self, spiking_data_file: str, config_file, delimiter: str, input_path: str):
-        if type(config_file) == list:
-            config = config_file
+    def _init_spiking_data_from_file(self, spiking_data_file: str, configuration, delimiter: str, input_path: str) -> tuple:
+        if type(configuration) == list:
+            config = configuration
             matrix_size = config[0]
-        elif type(config_file) == str:
+        elif type(configuration) == str:
             try:
-                with open(os.path.join(input_path, config_file), 'r') as fp:
+                with open(os.path.join(input_path, configuration), 'r') as fp:
                     reader = csv.reader(fp, delimiter='|')
                     config = np.array(list(reader), dtype=object)
                 config = config[1]
@@ -1687,7 +2001,7 @@ class NeuralDynamics:
                 config[2] = float(config[2]) # config[2] = T
                 matrix_size = int(config[0])
             except FileNotFoundError:
-                err = 'configuration file \"{}\" cannot be found.'.format(os.path.join(input_path, config_file))
+                err = 'configuration file \"{}\" cannot be found.'.format(os.path.join(input_path, configuration))
                 raise FileNotFoundError(err)
         try:
             with open(os.path.join(input_path, spiking_data_file), 'r') as fp:
@@ -1705,197 +2019,95 @@ class NeuralDynamics:
             raise FileNotFoundError(err)
         return spike_count, spike_times, config
 
-    def _init_firing_rate(self, _spike_count=None, _config=None, _custom=False):
-        if _custom == False: _spike_count, _config = self.spike_count, self.config
+    def _init_firing_rate(self, _spike_count=None, _config=None, _custom=False) -> np.ndarray:
+        if _custom == False: _spike_count, _config = self._spike_count, self._config
         return _spike_count / _config[2] * 1000 # config[2] = T
 
-    def _init_firing_rate_change(self, neural_dynamics_original: object, specific_node=[]):
+    def _init_firing_rate_change(self, neural_dynamics_original: object, specific_neurons=[]) -> np.ndarray:
         if type(neural_dynamics_original) != NeuralDynamics:
             err = 'the input argument \"neural_dynamics_original\" must be an object of class::NeuralDynamics.'
             raise TypeError(err)
-        spike_count_orig = neural_dynamics_original.spike_count
-        config_orig = neural_dynamics_original.config
-        if len(self.spike_count) != len(spike_count_orig):
+        spike_count_orig = neural_dynamics_original._spike_count
+        config_orig = neural_dynamics_original._config
+        if len(self._spike_count) != len(spike_count_orig):
             err = 'the numbers of neurons from two numerical simulations do not match.'
             raise ValueError(err)
         firing_rate_orig = self._init_firing_rate(spike_count_orig, config_orig, _custom=True)
         firing_rate = self._init_firing_rate()
-        if specific_node == []: return firing_rate - firing_rate_orig
-        else: return firing_rate[specific_node] - firing_rate_orig[specific_node]
+        if specific_neurons == []: return firing_rate - firing_rate_orig
+        else: return firing_rate[specific_neurons] - firing_rate_orig[specific_neurons]
 
-    def _init_interspike_interval(self, specific_node=[]):
-        if specific_node == []:
-            interspike_interval = np.empty(self.config[0], dtype=object)
-            for node in range(self.config[0]):
-                try: interspike_interval[node] = np.array(np.diff(self.spike_times[node]), dtype=float)
-                except ValueError: interspike_interval[node] = np.diff(np.array([0]))
+    def _init_interspike_interval(self, specific_neurons=[]) -> np.ndarray:
+        if specific_neurons == []:
+            interspike_interval = np.empty(self._config[0], dtype=object)
+            for neuron in range(self._config[0]):
+                try: interspike_interval[neuron] = np.array(np.diff(self._spike_times[neuron]), dtype=float)
+                except ValueError: interspike_interval[neuron] = np.diff(np.array([0]))
         else:
             count = 0
-            interspike_interval = np.empty(len(specific_node), dtype=object)
-            for node in range(self.config[0]):
-                if node in specific_node:
-                    try: interspike_interval[count] = np.array(np.diff(self.spike_times[node]), dtype=float)
+            interspike_interval = np.empty(len(specific_neurons), dtype=object)
+            for neuron in range(self._config[0]):
+                if neuron in specific_neurons:
+                    try: interspike_interval[count] = np.array(np.diff(self._spike_times[neuron]), dtype=float)
                     except ValueError: interspike_interval[count] = np.diff(np.array([0]))
                     count += 1
         interspike_interval = np.concatenate([item for item in interspike_interval.flatten()], 0) / 1000
         return interspike_interval
 
-    def _init_membrane_potential(self, node_index: int, _membrane_potential=None, _config=None, _custom=False):
-        if _custom == False: _membrane_potential, _config = self.membrane_potential_file, self.config
+    def _init_membrane_potential(self, neuron_index: int, _membrane_potential_timeseries=None, _config=None, _custom=False) -> np.ndarray:
+        if _custom == False: _membrane_potential_timeseries, _config = self._membrane_potential_timeseries_file, self._config
+        neuron_index -= 1
+        if not 1 <= neuron_index <= self._config[0]:
+            err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
+            raise IndexError(err)
         time_series = Vector_fl()
-        if time_series.read_from_binary(_membrane_potential, node_index, _config[0]) == 0: pass
+        if time_series.read_from_binary(_membrane_potential_timeseries, neuron_index, _config[0]) == 0: pass
         else:
             err = 'time series of membrane potential \"{}\" cannot be found.'.format(
-                  self.membrane_potential_file)
+                  self._membrane_potential_timeseries_file)
             raise FileNotFoundError(err)
-        return np.array(time_series)
+        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
 
-    def _init_synaptic_current(self, node_index: int, _synaptic_current=None, _config=None, _custom=False):
-        if _custom == False: _synaptic_current, _config = self.synaptic_current_file, self.config
+    def _init_recovery_variable(self, neuron_index: int, _recovery_variable_timeseries=None, _config=None, _custom=False) -> np.ndarray:
+        if _custom == False: _recovery_variable_timeseries, _config = self._recovery_variable_timeseries_file, self._config
+        neuron_index -= 1
+        if not 1 <= neuron_index <= self._config[0]:
+            err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
+            raise IndexError(err)
         time_series = Vector_fl()
-        if time_series.read_from_binary(_synaptic_current, node_index, _config[0]) == 0: pass
+        if time_series.read_from_binary(_recovery_variable_timeseries, neuron_index, _config[0]) == 0: pass
         else:
-            err = 'time series of synaptic current \"{}\" cannot be found.'.format(
-                  self.membrane_potential_file)
+            err = 'time series of recovery variable \"{}\" cannot be found.'.format(
+                  self._recovery_variable_timeseries_file)
             raise FileNotFoundError(err)
-        return np.array(time_series)
+        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
 
-    def _init_membrane_potential_change(self, node_index: int, neural_dynamics_original: object):
-        if type(neural_dynamics_original) != NeuralDynamics:
-            err = 'the input argument \"neural_dynamics_original\" must be an object of class:NeuralDynamics.'
-            raise TypeError(err)
-        if self.config != neural_dynamics_original.config:
-            err = 'the configurations of two numerical simulations do not match.'
-            raise TypeError(err)
-        time_series = self._init_membrane_potential(node_index)
-        time_series_orig = self._init_membrane_potential(node_index, neural_dynamics_original.membrane_potential_file,
-                                                         neural_dynamics_original.config, custom=True)
-        return time_series - time_series_orig, 
-
-    def _plot_distribution(self, data, bin_size=0.15, color='b', marker_style='^', line_style='-',
-                           plot_type='line', marker_size=8, marker_fill=True, line_width=2,
-                           figsize=(9, 6), dpi=150, plot_label='', xlabel='', textbox='',
-                           xlim=(None, None), ylim=(None, None), show_norm=False,
-                           x_logscale=False, y_logscale=False, remove_zero_density=False,
-                           file_name='plot_dist', file_label='', file_type=['svg','png'],
-                           save_fig=True, show_fig=False, mpl_ax=None,
-                           return_plot_data=False, return_area_under_graph=False):
-
-        # Return ax
-        def plot_subroutine(x, y, ax, ptype: str, plabel: str, plot_norm=False):
-            if plot_norm: c='k'; marker='None'; ls='--'; plabel=''
-            else: c=color; marker=marker_style; ls=line_style
-            if marker_fill == True:
-                if ptype == 'line': ax.plot(x, y, c=c, marker=marker, ms=marker_size, ls=ls, lw=line_width,
-                                                label=plabel)
-                else: ax.scatter(x, y, c=c, marker=marker, s=marker_size, label=plabel)
-            else:
-                if ptype == 'line': ax.plot(x, y, c=c, marker=marker, ms=marker_size, ls=ls, lw=line_width,
-                                                mfc='none', label=plabel)
-                else: ax.scatter(x, y, c=c, marker=marker, s=marker_size, facecolors='none', label=plabel)
-            return ax
-        
-        # Return ax, plot_data, area_under_graph
-        def make_plot(ax):
-            min_datum = np.amin(data); max_datum = np.amax(data)
-            if show_norm == True:
-                mu = np.mean(data); sigma = np.std(data)
-                x_value_norm = np.linspace(mu - 4*sigma, mu + 4*sigma, 150)
-                ax = plot_subroutine(x_value_norm, stats.norm.pdf(x_value_norm, mu, sigma), ax,
-                                     'line', 'Normal distribution', plot_norm=True)
-            if x_logscale == False:
-                number_of_bins = math.ceil((max_datum - min_datum) / bin_size)
-                hist_density, bin_edges = np.histogram(data, bins=np.linspace(min_datum, min_datum+number_of_bins*bin_size,
-                                                                              number_of_bins), density=True)
-            elif x_logscale == True:
-                min_datum = np.amin(np.array(data)[np.array(data) > 0])
-                number_of_bins = math.ceil((math.log10(max_datum) - math.log10(min_datum)) / bin_size)
-                hist_density, bin_edges = np.histogram(data, bins=np.logspace(math.log10(min_datum),
-                                                       math.log10(min_datum)+number_of_bins*bin_size, number_of_bins))
-            hist_density = np.array(hist_density, dtype=float)
-            hist_density /= np.dot(hist_density, np.diff(bin_edges)) # normalization
-            x_value = (bin_edges[1:] + bin_edges[:-1]) / 2
-            area_under_graph = np.dot(hist_density, np.diff(bin_edges))
-            if remove_zero_density == True:
-                non_zero_points = np.argwhere(hist_density == 0)
-                hist_density = np.delete(hist_density, non_zero_points, 0)
-                x_value = np.delete(x_value, non_zero_points, 0)
-            return plot_subroutine(x_value, hist_density, ax,
-                                   plot_type, plot_label), np.array(list(zip(x_value,hist_density))), area_under_graph
-
-        # Return ax
-        def format_plot(ax):
-            if x_logscale == True: ax.set_xscale('log')
-            if y_logscale == True: ax.set_yscale('log')
-            ax.set(xlabel=xlabel, ylabel='Probability density')
-            ax.set_xlim(xlim[0], xlim[1])
-            ax.set_ylim(ylim[0], ylim[1])
-            ax.grid(True)
-            handles, labels = ax.get_legend_handles_labels()
-            ax.legend(reversed(handles), reversed(labels))#, title='Distribution')
-            # textbox
-            if textbox != '':
-                props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                ax.text(0.00001, 1.05, textbox, fontsize=10, verticalalignment='top', transform=ax.transAxes, bbox=props)
-            return ax
-
-        if mpl_ax == None:
-            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-            ax, plot_data, area_under_graph = make_plot(ax)
-            ax = format_plot(ax)
-            fig.tight_layout()
-            for ext in file_type:
-                if file_label == '': file_path = file_name+'.'+ext
-                else: file_path = file_name+'_'+file_label+'.'+ext
-                if save_fig: fig.savefig(os.path.join(self.output_path, file_path))
-            if show_fig: plt.show()
-            plt.clf()
-            if return_plot_data and not return_area_under_graph: return plot_data
-            elif not return_plot_data and return_area_under_graph: return area_under_graph
-            else: return plot_data, area_under_graph
+    def _init_synaptic_current(self, neuron_index: int, _synaptic_current_timeseries=None, _config=None, _custom=False) -> np.ndarray:
+        if _custom == False: _synaptic_current_timeseries, _config = self._synaptic_current_timeseries_file, self._config
+        neuron_index -= 1
+        if not 1 <= neuron_index <= self._config[0]:
+            err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
+            raise IndexError(err)
+        time_series = Vector_fl()
+        if time_series.read_from_binary(_synaptic_current_timeseries, neuron_index, _config[0]) == 0: pass
         else:
-            ax, plot_data, _ = make_plot(mpl_ax)
-            if return_plot_data: return ax, plot_data
-            else: return ax
+            err = 'time series of current \"{}\" cannot be found.'.format(
+                  self._synaptic_current_timeseries_file)
+            raise FileNotFoundError(err)
+        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
 
-    def _plot_time_series(self, neuron_index, data, time, xlim=(0, -1), ylim=(None, None),
-                          mpl_ax=None, color='b', line_style='-', line_width=1,
-                          figsize=(10, 6), dpi=150, plot_label='', ylabel='', textbox='',
-                          file_name='time_series', file_label='', file_type=['svg','png'],
-                          save_fig=True, show_fig=False):
-        def format_plot(ax):
-            ax.set(xlabel='Time (s)', ylabel=ylabel)
-            if xlim[1] == -1: ax.set_xlim(0, self.config[2]/1000) # just fit
-            else: ax.set_xlim(xlim[0], xlim[1])
-            ax.set_ylim(ylim[0], ylim[1])
-            ax.grid(True)
-            handles, labels = ax.get_legend_handles_labels()
-            if textbox != '':
-                props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                ax.text(0.00001, 1.05, textbox, fontsize=10, verticalalignment='top', transform=ax.transAxes, bbox=props)
-            return ax
+    def firing_rates(self) -> np.ndarray:
+        """Return the firing rate of each neuron in the network.
 
-        if mpl_ax == None:
-            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-            ax.plot(time, data, color+line_style, lw=line_width, label='{} of node {}'.format(plot_label, neuron_index))
-            ax = format_plot(ax)
-            fig.tight_layout()
-            for ext in file_type:
-                if file_label == '': file_path = file_name+'.'+ext
-                else: file_path = file_name+'_'+file_label+'.'+ext
-                if save_fig: fig.savefig(os.path.join(self.output_path, file_path))
-            if show_fig: plt.show()
-            plt.clf()
-        else:
-            mpl_ax.plot(time, data, color+line_style, lw=line_width, label='{} of node {}'.format(plot_label, neuron_index))
-            return mpl_ax
-
-    def firing_rate(self):
-        """Return the firing rate of neurons in the network."""
+        Returns
+        -------
+        numpy.ndarray
+            the i-th array element coressponds to the firing rate of neuron i
+        """
         return self._init_firing_rate()
 
-    def firing_rate_change(self, neural_dynamics_original: object)->np.ndarray:
-        """Return the change in firing rate of neurons in two networks.
+    def firing_rate_changes(self, neural_dynamics_original: object) -> np.ndarray:
+        """Return the changes in firing rate of each neuron in two networks.
 
         Parameters
         ----------
@@ -1905,523 +2117,409 @@ class NeuralDynamics:
         Returns
         -------
         numpy.ndarray
-            array of changes in firing rate
+            the i-th array element coressponds to the change in firing rate of neuron i in two networks
         """
         return self._init_firing_rate_change(neural_dynamics_original)
 
-    def plot_spike_raster(self, width_ratio=1, trim=(None, None),
-                          file_name='plot_spike_raster', file_label='', file_type=['png']):
-        """Plot a raster plot of spiking activity of the network.
-
-        Parameters
-        ----------
-        width_ratio : int, optional
-            horizontal scale of the plot, by default 1
-        trim : tuple of float, optional
-            range of simulation time to be drawn, input a negative value to show the full range, by default (0, -1)
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_spike_raster'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['png']
-        """
-        print('Drawing graph: spike raster plot')
-        fig, ax = plt.subplots(figsize=(9*width_ratio, 6), dpi=200)
-        if trim[0] == None: trim=(0, trim[1])
-        if trim[1] == None: trim=(trim[0], self.config[2]/1000)
-        node = 0
-        for nodal_spike_times in (self.spike_times / 1000):
-            node += 1
-            if trim[0] > 0:
-                nodal_spike_times = nodal_spike_times[nodal_spike_times > float(trim[0])]
-            if trim[1] < self.config[2]/1000:
-                nodal_spike_times = nodal_spike_times[nodal_spike_times < float(trim[1])]
-            lc = mcol.EventCollection(nodal_spike_times, lineoffset=node, linestyle='-',
-                                      linelength=20, linewidth=1.5, color='black')
-            ax.add_collection(lc)
-        ax.set(xlabel='Time (s)', ylabel='Neuron index')
-        ax.set_xlim(trim[0], trim[1])               # config[2] = T
-        start_node, end_node = 0, self.config[0]    # config[0] = N
-        ax.set_ylim(start_node-2, end_node+1)
-        ax.grid(True)
-        fig.tight_layout()
-
-        for ext in file_type:
-            if file_label == '': file_path = file_name+'.'+ext
-            else: file_path = file_name+'_'+file_label+'.'+ext
-            fig.savefig(os.path.join(self.output_path, file_path))
-
-    def plot_firing_rate_distribution(self, bin_size=0.1, mpl_ax=None, c='b', m='^', ls='-', pt='line',
-                                      ms=8, mfc=True, lw=2, xlim=(0, None), ylim=(0, None),
-                                      figsize=(9, 6), dpi=150, show_norm=False, x_logscale=False,
-                                      remove_zero_density=False, plot_label='Firing rate distribution',
-                                      file_name='plot_firing_rate_dist', file_label='', file_type=['svg','png'],
-                                      return_plot_data=False, save_plot_details=False):
-        """Plot the distribution of firing rate of neurons in the network.
-
-        Parameters
-        ----------
-        bin_size : float, optional
-            size of bin, by default 0.1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        xlim : tuple, optional
-            range of x-axis, by default (0, 10)
-        ylim : tuple, optional
-            range of y-axis, by default (0, None)
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'Firing rate distribution'
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_firing_rate_dist'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        return_plot_data : bool, optional
-            also return the data points of the plot if enabled, by default False
-        save_plot_details : bool, optional
-            save the details of the plot if enabled, by default False
+    def interspike_intervals(self) -> np.ndarray:
+        """Return the inter-spike intervals of action potential spikes in the network.
 
         Returns
         -------
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
         numpy.ndarray
-            if `return_plot_data` is True, also return the plot data
+            the inter-spike intervals of action potential spikes in the network
         """
-        print('Drawing graph: distribution of firing rate')
-        firing_rate = self._init_firing_rate()
-        min_firing_rate = np.amin(firing_rate)
-        max_firing_rate = np.amax(firing_rate)
+        return self._init_interspike_interval()
 
-        # Export plot as a SVG file
-        if mpl_ax == None:
-            textbox = 'T: {:.7} ms | dt: {:.5} ms | min: {:.5} Hz | max: {:.5} Hz | bin size: {:.5}'.format(float(self.config[2]),
-                                                float(self.config[1]), float(min_firing_rate), float(max_firing_rate), float(bin_size))
-            plot_data, area_under_curve = self._plot_distribution(firing_rate, bin_size, figsize=figsize, dpi=dpi,
-                                                xlim=xlim, ylim=ylim, show_norm=show_norm, x_logscale=x_logscale,
-                                                remove_zero_density=remove_zero_density,
-                                                plot_label=plot_label, xlabel='Firing rate (Hz)', textbox=textbox,
-                                                file_name=file_name, file_label=file_label, file_type=file_type)
-            if save_plot_details:
-                file_name = 'plot_details_fr'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp:
-                    fp.write('Bin size: {}\n'.format(bin_size))
-                    fp.write('Min firing rate: {}\nMax firing rate: {}\n'.format(min_firing_rate, max_firing_rate))
-                    fp.write('Total density by areal summation: {}\n'.format(area_under_curve))
-                    fp.write('Show Gaussian distribution: {}'.format(str(show_norm)))
+    def plot_firing_rate_distribution(self, binsize: float, style=None, scale=None, graph=None, **options):
+        """Plot a firing rate distribution plot.
 
-                file_name = 'plot_data_fr'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp:
-                    for pd in plot_data: fp.write('{}\t{}\n'.format(pd[0], pd[1]))
+        Parameters
+        ----------
+        binsize : float
+            bin size
+        style : dict, optional
+            style of the plot, e.g., color, line weight, etc., by default `None`
+        scale : dict, optional
+            scale of the plot, e.g., x range, log scale, etc., by default `None`
+        graph : object of Grapher, optional
+            supply a Grapher object here for overlaying plots, by default `None`
+        
+        **options
+        
+        textbox : str, optional
+            plot information to be displayed at top-left corner, show basic info by default
+        fitgaussian : bool, optional
+            fit the data with a Gaussian curve, by default `False`
+        filelabel : str, optional
+            label attached at the end of the file name, by default `''`
+        fileextension : str, optional
+            file extension, by default `'png'`
+        subplotindex : int, optional
+            index of sub-plot to be drawn into, by default `0`
+        """
+        print('Drawing graph: distribution of firing rates')
+        firing_rates = self._init_firing_rate()
+        min_firing_rate = np.amin(firing_rates)
+        max_firing_rate = np.amax(firing_rates)
 
-            if return_plot_data: return plot_data
+        textbox = 'default'
+        fitgaussian = 'none'
+        fileextension = 'png'
+        subplotindex = 0
+        for key, value in options.items():
+            if key == 'textbox': textbox = value
+            elif key == 'fitgaussian': fitgaussian = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-        # Return plot as a matplotlib.axes
+        if graph == None:
+            graph = GraphDensityDistribution()
+            graph.create_plot(figsize=(9,7))
+            graph.add_data(firing_rates, binsize)
+
+            if fitgaussian != 'none':
+                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
+                else: graph.fit_gaussian(0)
+            if textbox == 'default':
+                textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
+                        float(self._config[1]), float(min_firing_rate), float(max_firing_rate), float(binsize))
+                graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density'))
+            else: graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            if scale != None: graph.set_scale(scale)
+            graph.make_plot()
+            graph.save_plot('Firing rate distribution', ext=fileextension, path=self._output_path)
+            graph.save_plot_info('firing_rate', path=self._output_path)
         else:
-            return self._plot_distribution(firing_rate, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           show_norm=show_norm, x_logscale=x_logscale,
-                                           remove_zero_density=remove_zero_density, plot_label=plot_label,
-                                           mpl_ax=mpl_ax, return_plot_data=return_plot_data)
+            if style != None: graph.stylize_plot(style)
+            graph.add_data(firing_rates, binsize)
+            graph.make_plot(subplotindex)
 
-    def plot_firing_rate_change_distribution(self, neural_dynamics_original: object,
-                                             bin_size=0.1, mpl_ax=None, c='b', m='^', ls='-', pt='line',
-                                             ms=8, mfc=True, lw=2, xlim=(None, None), ylim=(None, None),
-                                             figsize=(9, 6), dpi=150, x_logscale=False, y_logscale=True,
-                                             remove_zero_density=False, filter_neurons=[],
-                                             plot_label='Change in firing rate distribution',
-                                             file_name='plot_firing_rate_change_dist',
-                                             file_label='', file_type=['svg','png'],
-                                             return_plot_data=False, save_plot_details=False):
-        """Plot the distribution of change in firing rate of neurons in two networks.
+    def plot_firing_rate_change_distribution(self, neural_dynamics_original: object, binsize: float, style=None, scale=None, graph=None, **options):
+        """Plot a firing rate change distribution plot.
 
         Parameters
         ----------
-        neural_dynamics_original : object
-            _description_
-        bin_size : float, optional
-            size of bin, by default 0.1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        ylim : tuple, optional
-            range of y-axis, by default (None, None)
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        x_logscale : bool, optional
-            y-axis in log scale if True, by default True
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        filter_neurons : list, optional
-            list of neuron node indices to be considered, by default [] (include all neurons)
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'Change in firing rate distribution'
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_firing_rate_change_dist'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        return_plot_data : bool, optional
-            also return the data points of the plot if enabled, by default False
-        save_plot_details : bool, optional
-            save the details of the plot if enabled, by default False
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        numpy.ndarray
-            if `return_plot_data` is True, also return the plot data
+        neural_dynamics_original : object of NeuralDynamics
+            object of original neural dynamics
+        binsize : float
+            bin size
+        style : dict, optional
+            style of the plot, e.g., color, line weight, etc., by default `None`
+        scale : dict, optional
+            scale of the plot, e.g., x range, log scale, etc., by default `None`
+        graph : object of Grapher, optional
+            supply a Grapher object here for overlaying plots, by default `None`
+        
+        **options
+        
+        textbox : str, optional
+            plot information to be displayed at top-left corner, show basic info by default
+        fitgaussian : bool, optional
+            fit the data with a Gaussian curve, by default `False`
+        filelabel : str, optional
+            label attached at the end of the file name, by default `''`
+        fileextension : str, optional
+            file extension, by default `'png'`
+        subplotindex : int, optional
+            index of sub-plot to be drawn into, by default `0`
         """
         print('Drawing graph: distribution of changes in firing rate')
-        if filter_neurons == []: change_in_firing_rate = self._init_firing_rate_change(neural_dynamics_original)
-        else: change_in_firing_rate = self._init_firing_rate_change(neural_dynamics_original, filter_neurons)
-        min_change_in_firing_rate = np.amin(change_in_firing_rate)
-        max_change_in_firing_rate = np.amax(change_in_firing_rate)
+        chaanges_in_firing_rate = self._init_firing_rate_change(neural_dynamics_original)
+        min_firing_rate = np.amin(chaanges_in_firing_rate)
+        max_firing_rate = np.amax(chaanges_in_firing_rate)
 
-        # Export plot as a SVG file
-        if mpl_ax == None:
-            textbox = 'T: {:.7} ms | dt: {:.5} ms | min: {:.5} Hz | max: {:.5} Hz | bin size: {:.5}'.format(float(self.config[2]),
-                                                        float(self.config[1]), float(min_change_in_firing_rate),
-                                                        float(max_change_in_firing_rate), float(bin_size))
-            plot_data, area_under_curve = self._plot_distribution(change_in_firing_rate, bin_size,
-                                                        figsize=figsize, dpi=dpi, xlim=xlim, ylim=ylim,
-                                                        x_logscale=x_logscale, y_logscale=y_logscale,
-                                                        remove_zero_density=remove_zero_density, plot_label=plot_label,
-                                                        xlabel='Change in firing rate (Hz)', textbox=textbox,
-                                                        file_name=file_name, file_label=file_label, file_type=file_type)
-            if save_plot_details:
-                file_name = 'plot_details_fr_chg'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp:
-                    fp.write('Bin size: {}\n'.format(bin_size))
-                    fp.write('Min change in firing rate: {}\nMax change in firing rate: {}\n'.format(min_change_in_firing_rate,
-                                                                                                    max_change_in_firing_rate))
-                    fp.write('Total density by areal summation: {}'.format(area_under_curve))
+        textbox = 'default'
+        fitgaussian = 'none'
+        fileextension = 'png'
+        subplotindex = 0
+        for key, value in options.items():
+            if key == 'textbox': textbox = value
+            elif key == 'fitgaussian': fitgaussian = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-                file_name = 'plot_data_fr_chg'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp:
-                    for pd in plot_data: fp.write('{}\t{}\n'.format(pd[0], pd[1]))
+        if graph == None:
+            graph = GraphDensityDistribution()
+            graph.create_plot(figsize=(9,7))
+            graph.add_data(chaanges_in_firing_rate, binsize)
 
-            if return_plot_data: return plot_data
-
-        # Return plot as a matplotlib.axes
+            if fitgaussian != 'none':
+                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
+                else: graph.fit_gaussian(0)
+            if textbox == 'default':
+                textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
+                        float(self._config[1]), float(min_firing_rate), float(max_firing_rate), float(binsize))
+                graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density'))
+            else: graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            if scale != None: graph.set_scale(scale)
+            graph.make_plot()
+            graph.save_plot('Change in firing rate distribution', ext=fileextension, path=self._output_path)
+            graph.save_plot_info('firing_rate_change', path=self._output_path)
         else:
-            return self._plot_distribution(change_in_firing_rate, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, plot_label=plot_label,
-                                           remove_zero_density=remove_zero_density,
-                                           mpl_ax=mpl_ax, return_plot_data=return_plot_data)
+            if style != None: graph.stylize_plot(style)
+            graph.add_data(chaanges_in_firing_rate, binsize)
+            graph.make_plot(subplotindex)
 
-    def plot_interspike_interval_distribution(self, bin_size=0.025, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, xlim=(0.0005, None), ylim=(0, None),
-                                              figsize=(9, 6), dpi=150, x_logscale=True, y_logscale=False,
-                                              remove_zero_density=False, filter_neurons=[],
-                                              plot_label='Log ISI distribution',
-                                              file_name='plot_isi_dist', file_label='', file_type=['svg','png'],
-                                              return_plot_data=False, save_plot_details=False):
-        """Plot the distribution of inter-spike interval of all neurons in networks.
+    def plot_interspike_interval_distribution(self, binsize: float, xlogscale=True, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot an inter-spike intervals distribution plot.
 
         Parameters
         ----------
-        bin_size : float, optional
-            size of bin, by default 0.025
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        xlim : tuple, optional
-            range of x-axis, by default (0.0005, None)
-        ylim : tuple, optional
-            range of y-axis, by default (0, None)
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default True
-        x_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        filter_neurons : list, optional
-            list of neuron node indices to be considered, by default [] (include all neurons)
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'Log ISI distribution'
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_isi_dist'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : str, optional
-            format(s)/extension(s) of the output plot, by default 'svg'
-        return_plot_data : bool, optional
-            also return the data points of the plot if enabled, by default False
-        save_plot_details : bool, optional
-            save the details of the plot if enabled, by default False
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        numpy.ndarray
-            if `return_plot_data` is True, also return the plot data
+        binsize : float
+            bin size
+        xlogscale : bool, optional
+            log scale in x-axis, by default `True`
+        specific_neurons : list, optional
+            neurons, by default `[]`
+        style : dict, optional
+            style of the plot, e.g., color, line weight, etc., by default `None`
+        label : dict, optional
+            label of the plot, e.g., axis label, legend, etc., by default `None`
+        scale : dict, optional
+            scale of the plot, e.g., x range, log scale, etc., by default `None`
+        graph : object of Grapher, optional
+            supply a Grapher object here for overlaying plots, by default `None`
+        
+        **options
+        
+        textbox : str, optional
+            plot information to be displayed at top-left corner, show basic info by default
+        fitgaussian : bool, optional
+            fit the data with a Gaussian curve, by default `False`
+        filelabel : str, optional
+            label attached at the end of the file name, by default `''`
+        fileextension : str, optional
+            file extension, by default `'png'`
+        subplotindex : int, optional
+            index of sub-plot to be drawn into, by default `0`
         """
-        print('Drawing graph: distribution of inter-spike interval (ISI)')
-        interspike_interval = self._init_interspike_interval(filter_neurons)
-        min_interspike_interval = np.amin(interspike_interval)
-        max_interspike_interval = np.amax(interspike_interval)
-        # Export plot as a SVG file
-        if mpl_ax == None:
-            if x_logscale == True:
-                textbox = 'T: {:.7} ms | dt: {:.5} ms | min: {:.5} s | max: {:.5} s | bin size (in log scale): {:.5}'.format(float(self.config[2]),
-                                                        float(self.config[1]), float(min_interspike_interval),
-                                                        float(max_interspike_interval), float(bin_size))
-            else: textbox = 'T: {:.7} ms | dt: {:.5} ms | min: {:.5} s | max: {:.5} s | bin size: {:.5}'.format(float(self.config[2]),
-                                                        float(self.config[1]), float(min_interspike_interval),
-                                                        float(max_interspike_interval), float(bin_size))
-            plot_data, area_under_curve = self._plot_distribution(interspike_interval, bin_size,
-                                                        figsize=figsize, dpi=dpi, xlim=xlim, ylim=ylim,
-                                                        x_logscale=x_logscale, y_logscale=y_logscale,
-                                                        plot_label=plot_label, xlabel='ISI (s)', textbox=textbox,
-                                                        file_name=file_name, file_label=file_label, file_type=file_type)
-            if save_plot_details:
-                file_name = 'plot_details_isi'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp_info:
-                    fp_info.write('Bin size in log scale: {}\n'.format(bin_size))
-                    fp_info.write('Min ISI: {}\nMax ISI: {}\n'.format(min_interspike_interval, max_interspike_interval))
-                    fp_info.write('Total density by areal summation: {}'.format(area_under_curve))
-
-                file_name = 'plot_data_isi'
-                if file_label == '': file_path = file_name+'.txt'
-                else: file_path = file_name+'_'+file_label+'.txt'
-                with open(self.output_path+file_path, 'w') as fp:
-                    for pd in plot_data: fp.write('{}\t{}\n'.format(pd[0], pd[1]))
-
-        # Return plot as a matplotlib.axes
+        print('Drawing graph: distribution of inter-spike intervals (ISI)')
+        if len(specific_neurons) != 0: specific_neurons += 1
+        interspike_intervals = self._init_interspike_interval(specific_neurons)
+        if interspike_intervals.size != 0:
+            min_interspike_interval = np.amin(interspike_intervals)
+            max_interspike_interval = np.amax(interspike_intervals)
         else:
-            return self._plot_distribution(interspike_interval, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=True, plot_label=plot_label,
-                                           mpl_ax=mpl_ax, return_plot_data=return_plot_data)
+            min_interspike_interval, max_interspike_interval = None, None
 
-    def plot_membrane_potential_time_series(self, node_index: int, trim=(0, -1), mpl_ax=None, c='b',
-                                            ls='-', lw=1, figsize=(12, 6), dpi=150, ylim=(None, None),
-                                            plot_label='Membrane potential', file_name='plot_potential',
-                                            file_label='', file_type=['svg','png']):
-        """Plot the time series of membrane potential of a sepecific neuron node in the network.
+        density = True
+        histogram = False
+        textbox = 'default'
+        fitgaussian = 'none'
+        fileextension = 'png'
+        subplotindex = 0
+        for key, value in options.items():
+            if key == 'density': density = value
+            elif key == 'histogram': histogram = value
+            elif key == 'textbox': textbox = value
+            elif key == 'fitgaussian': fitgaussian = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        if histogram: density = False
+
+        if graph == None:
+            if density: graph = GraphDensityDistribution()
+            else: graph = GraphHistogramDistribution()
+            graph.create_plot(figsize=(9,7))
+            graph.add_data(interspike_intervals, binsize, logdata=xlogscale)
+
+            if fitgaussian != 'none':
+                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
+                else: graph.fit_gaussian(0)
+            if textbox == 'default':
+                if xlogscale:
+                    textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} s | max: {:.3} | bin size (log): {:.5}'.format(float(self._config[2]),
+                            float(self._config[1]), float(min_interspike_interval), float(max_interspike_interval), float(binsize))
+                else:
+                    textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} s | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
+                            float(self._config[1]), float(min_interspike_interval), float(max_interspike_interval), float(binsize))
+                graph.label_plot(dict(xlabel='Inter-spike interval (Hz)', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Inter-spike interval (Hz)'))
+            else: graph.label_plot(dict(xlabel='Inter-spike interval (Hz)', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.set_scale(dict(xlogscale=True))
+            if scale != None: graph.set_scale(scale)
+            graph.make_plot()
+            graph.save_plot('Inter-spike interval distribution', ext=fileextension, path=self._output_path)
+            graph.save_plot_info('interspike_interval', path=self._output_path)
+        else:
+            graph.set_scale(dict(grid=True, xlogscale=True))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(interspike_intervals, binsize, logdata=xlogscale)
+            graph.make_plot(subplotindex)
+
+    def plot_spike_raster(self, trim=(None, None), graph=None, **options):
+        """Plot a spike raster plot.
 
         Parameters
         ----------
-        node_index : int
-            index of neuron node to be plot, starts from 1
-        trim : tuple of float, optional
-            range of simulation time to be drawn, input a negative value to show the full range, by default (0, -1)
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        figsize : tuple of float, optional
-            size, by default (12, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        ylim : tuple, optional
-            range of y-axis, by default (None, None)
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'Membrane potential'
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_potential'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
-        print('Drawing graph: time series of membrane potential of node {}'.format(node_index))
-        time_series = self._init_membrane_potential(node_index)
-        time = np.arange(0, len(time_series)) * self.config[1] / 1000 # total time steps * dt in seconds
-        textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5} ms'.format(int(node_index), float(self.config[2]), float(self.config[1]))
-
-        # Export plot as a SVG file
-        if mpl_ax == None:
-            self._plot_time_series(node_index, time_series, time, trim, ylim, None, c, ls, lw,
-                                   figsize, dpi, plot_label, 'Membrane potential (mV)', textbox,
-                                   file_name+'_'+str(node_index), file_label, file_type)
-        # Return plot as a matplotlib.axes
-        else:
-            return self._plot_time_series(node_index, time_series, time, trim, ylim, mpl_ax,
-                                          c, ls, lw, plot_label)
-
-    def plot_membrane_potential_change_time_series(self, node_index: int, neural_dynamics_original: object,
-                                                   trim=(0, -1), mpl_ax=None, c='b', ls='-', lw=1,
-                                                   figsize=(12, 6), dpi=150, ylim=(None, None),
-                                                   plot_label='Change in membrane potential',
-                                                   file_name='plot_potential_change',
-                                                   file_label='', file_type=['svg','png']):
-        """Plot the time series of change in membrane potential of a sepecific neuron node in two networks.
-
-        Parameters
-        ----------
-        node_index : int
-            index of neuron node to be plot, starts from 1
-        neural_dynamics_original : object
-            object of class NeuralDynamics
         trim : tuple, optional
-            range of simulation time to be drawn, input a negative value to show the full range, by default (0, -1)
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines, by default 'b'
-        ls : str, optional
-            _description_, by default '-'
-        lw : float, optional
-            line weight, by default 1
-        figsize : tuple of float, optional
-            figure size, by default (12, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        ylim : tuple, optional
-            range of y-axis, by default (None, None)
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'Change in membrane potential'
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_potential_change'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
+            the range of time to be plotted, by default `(None, None)`
+        
+        **options
+        
+        color : str, optional
+            marker color, by default `'b'`
+        filelabel : str, optional
+            label attached at the end of the file name, by default `''`
+        fileextension : str, optional
+            file extension, by default `'png'`
+        subplotindex : int, optional
+            index of sub-plot to be drawn into, by default `0`
         """
-        print('Drawing graph: time series of changes in membrane potential of node {}'.format(node_index))
-        time_series = self._init_membrane_potential_change(node_index, neural_dynamics_original)
-        time = np.arange(0, len(time_series)) * self.config[1] / 1000 # total time steps * dt in seconds
-        textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5} ms'.format(int(node_index), float(self.config[2]), float(self.config[1]))
-        # Export plot as a SVG file
-        if mpl_ax == None:
-            self._plot_time_series(node_index, time_series, time, trim, ylim, None, c, ls, lw, figsize, dpi,
-                                   plot_label, 'Change in membrane potential (mV)', textbox,
-                                   file_name+'_'+str(node_index), file_label, file_type)
-        # Return plot as a matplotlib.axes
+        print('Drawing graph: spike raster plot')
+        if graph == None: fig, ax = plt.subplots(figsize=(14,7))
+
+        color = 'k'
+        # plotlabel = ''
+        filelabel = ''
+        fileextension = 'png'
+        subplotindex = None
+        for key, value in options.items():
+            if key == 'color' or key == 'c': color = value
+            # elif key == 'plotlabel': plotlabel = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+
+        if trim[0] == None: trim=(0, trim[1])
+        if trim[1] == None: trim=(trim[0], self._config[2]/1000)
+        neuron_index = 0
+        if graph == None:
+            for neuronal_spike_times in (self._spike_times / 1000):
+                neuron_index += 1
+                if trim[0] > 0: neuronal_spike_times = neuronal_spike_times[neuronal_spike_times > float(trim[0])]
+                if trim[1] < self._config[2]/1000: neuronal_spike_times = neuronal_spike_times[neuronal_spike_times < float(trim[1])]
+                lc = mcol.EventCollection(neuronal_spike_times, lineoffset=neuron_index, linestyle='-',
+                                          linelength=20, linewidth=1.5, color=color)
+                ax.add_collection(lc)
+            ax.set(xlabel='Time (s)', ylabel='Neuron index')
+            ax.set_xlim(trim[0], trim[1])               # config[2] = T
+            start_node, end_node = 0, self._config[0]   # config[0] = N
+            ax.set_ylim(start_node-2, end_node+1)
+            # ax.grid(True, which='major')
+            ax.grid(False)
+            plt.tight_layout()
+
+            if filelabel == '': filename = '{}.{}'.format('Spike raster plot', fileextension)
+            else: filename = '{}_{}.{}'.format('Spike raster plot', filelabel, fileextension)
+            fig.savefig(os.path.join(self._output_path, filename))
         else:
-            return self._plot_time_series(node_index, time_series, time, trim, ylim, mpl_ax, c, ls, lw,
-                                          plot_label)
+            if subplotindex == None: ax = graph.ax
+            else: ax = graph.axes[subplotindex]
+            for neuronal_spike_times in (self._spike_times / 1000):
+                neuron_index += 1
+                if trim[0] > 0: neuronal_spike_times = neuronal_spike_times[neuronal_spike_times > float(trim[0])]
+                if trim[1] < self._config[2]/1000: neuronal_spike_times = neuronal_spike_times[neuronal_spike_times < float(trim[1])]
+                lc = mcol.EventCollection(neuronal_spike_times, lineoffset=neuron_index, linestyle='-',
+                                          linelength=20, linewidth=1.5, color=color)
+                ax.add_collection(lc)
+            ax.set(ylim=(0, self._config[0]), xlim=trim)
+            ax.minorticks_off()
+            # ax.grid(False, which='minor')
+            # ax.grid(True, which='major')
+            ax.grid(False)
 
-    def plot_potential_current_graph(self, node_index: int, start_time=None, end_time=None,
-                                     figsize=(9, 9), dpi=150, plot_label='', file_name='plot_potential_current',
-                                     file_label='', file_type=['png']):
-        """Plot the graph of membrane potential against synaptic current of a specific neuron in the network.
+    def plot_membrane_potential_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+        print('Drawing graph: membrane potential time series of neuron-{}'.format(neuron_index))
+        voltage, time = self._init_membrane_potential(neuron_index)
 
-        Parameters
-        ----------
-        node_index : int
-            index of neuron node to be plot, starts from 1
-        start_time : _type_, optional
-            starting time in millisecond (ms) of the plot, set to None to plot from the begining, by default None
-        end_time : _type_, optional
-            ending time in millisecond (ms) of the plot, set to None to plot until the end, by default None
-        figsize : tuple, optional
-            figure size, by default (9, 9)
-        dpi : int, optional
-            dots per inch, by default 150
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default ''
-        file_name : str, optional
-            name or path of the output plot, by default 'plot_potential_current'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['png']
-        """
-        print('Drawing graph: membrane potential against synaptic current for neuron node {}'.format(node_index))
-        membrane_potential = self._init_membrane_potential(node_index)
-        synaptic_current = self._init_synaptic_current(node_index)
+        textbox = 'default'
+        filelabel = ''
+        fileextension = 'png'
+        for key, value in options.items():
+            if key == 'textbox': textbox = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
 
-        if start_time == None: start_time = 0
-        if end_time == None: end_time = self.config[2]
-        beg = int(start_time*1000/self.config[1])
-        end = int(end_time*1000/self.config[1])
+        g = GraphDataRelation()
+        g.create_plot(figsize=(14,7))
+        g.add_data(time, voltage)
 
-        fig, ax = plt.subplots(figsize=figsize, dpi=100)
-        lc = _colorline(membrane_potential[beg:end], synaptic_current[beg:end], cmap='copper', linewidth=1)
-        cbar = plt.colorbar(lc)
-        cbar.ax.set_yticklabels(['{:.5}'.format(x) for x in np.arange(start_time,end_time+(end_time-start_time)/5,
-                                                                      (end_time-start_time)/5)])
-        ax.autoscale_view()
-        for ext in file_type:
-            if file_label == '': file_path = file_name+'_'+str(node_index)+'.'+ext
-            else: file_path = file_name+'_'+str(node_index)+'_'+file_label+'.'+ext
-            fig.savefig(os.path.join(self.output_path, file_path))
+        if textbox == 'default':
+            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                int(neuron_index), float(self._config[2]), float(self._config[1]))
+            g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
+        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)'))
+        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
+        if style != None: g.stylize_plot(style)
+        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
+        if scale != None: g.set_scale(scale)
+        if trim != (None, None): g.set_scale(xlim=trim)
+        g.make_plot()
+        g.save_plot('Membrane potential of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+        g.save_plot_info('membrane_potential_neuron_{}'.format(neuron_index), path=self._output_path)
+
+    def plot_recovery_variable_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+        print('Drawing graph: recovery variable time series of neuron-{}'.format(neuron_index))
+        recovery, time = self._init_recovery_variable(neuron_index)
+
+        textbox = 'default'
+        filelabel = ''
+        fileextension = 'png'
+        for key, value in options.items():
+            if key == 'textbox': textbox = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+
+        g = GraphDataRelation()
+        g.create_plot(figsize=(14,7))
+        g.add_data(time, recovery)
+
+        if textbox == 'default':
+            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                int(neuron_index), float(self._config[2]), float(self._config[1]))
+            g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
+        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)'))
+        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
+        if style != None: g.stylize_plot(style)
+        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
+        if scale != None: g.set_scale(scale)
+        if trim != (None, None): g.set_scale(xlim=trim)
+        g.make_plot()
+        g.save_plot('Recovery variable of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+        g.save_plot_info('recovery_variable_neuron_{}'.format(neuron_index), path=self._output_path)
+
+    def plot_synaptic_current_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+        print('Drawing graph: current time series of neuron-{}'.format(neuron_index))
+        current, time = self._init_synaptic_current(neuron_index)
+
+        textbox = 'default'
+        filelabel = ''
+        fileextension = 'png'
+        for key, value in options.items():
+            if key == 'textbox': textbox = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+
+        g = GraphDataRelation()
+        g.create_plot(figsize=(14,7))
+        g.add_data(time, current)
+
+        if textbox == 'default':
+            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                int(neuron_index), float(self._config[2]), float(self._config[1]))
+            g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
+        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)'))
+        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
+        if style != None: g.stylize_plot(style)
+        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
+        if scale != None: g.set_scale(scale)
+        if trim != (None, None): g.set_scale(xlim=trim)
+        g.make_plot()
+        g.save_plot('Current of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+        g.save_plot_info('current_neuron_{}'.format(neuron_index), path=self._output_path)
 
 
 # Other tools
@@ -2682,10 +2780,10 @@ def fread_dense_matrix(filename: str, delim='\t')->np.ndarray:
     try:
         return np.array(list(csv.reader(open(filename, 'r'), delimiter=delim))).astype(float)
     except FileNotFoundError:
-        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
-        print(err); exit(1)
+        err = 'matrix file "{}" cannot be found'.format(filename)
+        raise FileNotFoundError(err)
 
-def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->np.ndarray:
+def fread_sparse_matrix(filename: str, delim=' ', start_idx=1)->np.ndarray:
     """Read a matrix from a file.
     
     The file should store only nonzero elements in each row, with format: j i w_ji, separated by `delim`.
@@ -2694,8 +2792,6 @@ def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->n
     ----------
     filename : str
         name or path of the file
-    A_size : tuple of int
-        size of the matrix (row size, col size)
     delim : str or chr, optional
         delimiter of the matrix file, by default 'whitespace'
     start_idx : int, optional
@@ -2706,21 +2802,21 @@ def fread_sparse_matrix(filename: str, A_size: tuple, delim=' ', start_idx=1)->n
     numpy.ndarray
         the matrix in the file
     """
-    if type(A_size) == int: A_size = (A_size, A_size)
     try:
         with open(filename, 'r', newline='') as fp:
             content = list(csv.reader(fp, delimiter=delim))
+            A_size = int(content[0])
             for i in range(len(content)):
-                content[i] = remove_all_occurrences('', content[i])
-                content[i][0] = int(content[i][0])-start_idx # j
-                content[i][1] = int(content[i][1])-start_idx # i
-                content[i][2] = float(content[i][2]) # w_ij
+                content[i+1] = remove_all_occurrences('', content[i+1])
+                content[i+1][0] = int(content[i+1][0])-start_idx # j
+                content[i+1][1] = int(content[i+1][1])-start_idx # i
+                content[i+1][2] = float(content[i+1][2]) # w_ij
             matrix = np.zeros((A_size[0], A_size[1]))
             for item in content: matrix[item[1]][item[0]] = item[2]
             return np.array(matrix).astype(float)
     except FileNotFoundError:
-        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
-        print(err); exit(1)
+        err = 'matrix file "{}" cannot be found'.format(filename)
+        raise FileNotFoundError(err)
 
 def fread_ragged_2darray(filename: str, delim='\t', dtype=float) -> np.ndarray:
     """Read a 2d array with varying row length from a file.
@@ -2745,8 +2841,8 @@ def fread_ragged_2darray(filename: str, delim='\t', dtype=float) -> np.ndarray:
                 list(csv.reader(open(filename, 'r'), delimiter=delim)
         )], dtype=object)
     except FileNotFoundError:
-        err = 'FileNotFoundError: matrix file "{}" cannot be found.'.format(filename)
-        print(err); exit(1)
+        err = 'matrix file "{}" cannot be found'.format(filename)
+        raise FileNotFoundError(err)
 
 def fwrite_dense_matrix(A: iter, filename: str, delim='\t', dtype=float):
     """Write a matrix into a file.
@@ -2783,7 +2879,7 @@ def fwrite_dense_matrix(A: iter, filename: str, delim='\t', dtype=float):
                         else:               fp.write( '{}{:.8}'.format(delim, element))
                     fp.write('\n')
     except FileNotFoundError:
-        err = 'FileNotFoundError: cannot write to file "{}", e.g., the path to the directory does not exist.'.format(filename)
+        err = 'cannot write to file "{}", e.g., the path to the directory does not exist'.format(filename)
         raise FileNotFoundError(err)
 
 def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1, dtype=float):
@@ -2807,19 +2903,20 @@ def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1, dtype=f
     """
     try:
         with open(filename, 'w') as fp:
+            fp.write(len(A))
             if dtype == int:
                 for i in range(len(A)):
                     for j in range(len(A[i])):
                         if A[i][j] != 0:
-                            fp.write('{:d}{}{:d}{}{:d}\n'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
+                            fp.write('\n{:d}{}{:d}{}{:d}'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
             else:
                 for i in range(len(A)):
                     for j in range(len(A[i])):
                         if A[i][j] != 0:
-                            fp.write('{:d}{}{:d}{}{:.10f}\n'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
+                            fp.write('\n{:d}{}{:d}{}{:.10f}'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
     except FileNotFoundError:
-        err = 'FileNotFoundError: cannot write to file "{}", e.g., the path to the directory does not exist.'.format(filename)
-        raise FileExistsError(err)
+        err = 'cannot write to file "{}", e.g., the path to the directory does not exist'.format(filename)
+        raise FileNotFoundError(err)
 
 def remove_diag(A: np.ndarray)->np.ndarray:
     """Remove diagonal elements from a numpy.ndarray square matrix."""
