@@ -2,11 +2,6 @@
 NeuronLib
 =========
 
-Version: alpha01
-Last update: 20 May 2022
-
-In progress: update class "NeuralNetwork"
-
 A library containing useful tools for analyzing data from neural network simulations.
 
 Provides:
@@ -29,6 +24,14 @@ to view all instructions such as additional arguments for graph plotting.
 >>> nlib.ask_for_help()
 >>> nlib.help_graph_formatting()
 
+----------
+
+Version: alpha02
+Last update: 02 June 2022
+
+In progress:
+- updating class "NeuralNetwork"
+
 """
 
 
@@ -40,6 +43,7 @@ import matplotlib as mpl
 from scipy import linalg, stats
 from matplotlib import pyplot as plt, collections as mcol, ticker as tck, patches
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from torch import float16
 from lib.cppvector import Vector_fl
 
 
@@ -73,6 +77,9 @@ class Grapher:
         self._ms           = 5
         self._ls           = 'none'
         self._lw           = 2
+        self._mfc          = None
+        self._mf           = True
+
         self._title        = ''
         self._plotlabel    = ''
         self._axislabel    = ['','']
@@ -103,24 +110,20 @@ class Grapher:
         Parameters
         ----------
         figsize : tuple, optional
-            figure size, by default `(7, 7)`
-
+            figure size, by default `(7, 7)`\n
         nrows, ncols : int
-            number of rows/columns of the subplot grid, by default `1`
-
+            number of rows/columns of the subplot grid, by default `1`\n
         sharex, sharey : bool or {`'none'`, `'all'`, `'row'`, `'col'`}
             control sharing of properties among x or y axes, by default `False`:
             - `True` or `'all'`: x- or y-axis will be shared among all subplots
             - `False` or `'none'`: each subplot x- or y-axis will be independent
             - `'row'`: each subplot row will share an x- or y-axis
-            - `'col'`: each subplot column will share an x- or y-axis
-
+            - `'col'`: each subplot column will share an x- or y-axis\n
         hratio, wratio : array of int
-            define the relative height of rows/width of columns,
-            e.g., hratio=`[1, 3, 2]` for nrows=3
-
+            define the relative height of rows/width of columns
+            e.g., hratio=`[1, 3, 2]` for nrows: 3\n
         dpi : int, optional
-            DPI, by default `150`
+            DPI, by default `150`\n
         """
         sharex = False
         sharey = False
@@ -212,6 +215,10 @@ class Grapher:
             marker style, e.g., `'o', '^', 'D', ','`\n
         markersize | ms : float
             marker size\n
+        markerfacecolor | mfc : str
+            marker face color, default: same as `color`
+        markerfilled | mf : bool
+            solid marker or hollow marker, default `True`
         linestyle | ls : str
             line style, e.g., `'-', '--', '-.', ':'`\n
         lineweight | lw : float
@@ -221,9 +228,12 @@ class Grapher:
             if key == 'color' or key == 'c': self._c = value
             elif key == 'marker' or key == 'm': self._m = value
             elif key == 'markersize' or key == 'ms': self._ms = value
+            elif key == 'markerfacecolor' or key == 'mfc': self._mfc = value
+            elif key == 'markerfilled' or key == 'mf': self._mf = value
             elif key == 'linestyle' or key == 'ls': self._ls = value
             elif key == 'lineweight' or key == 'lw': self._lw = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        if not self._mf: self._mfc = 'none'
 
     def label_plot(self, label):
         """Label matplotlib axes.
@@ -414,6 +424,9 @@ class Grapher:
         if self._minortick: plt.minorticks_on()
         else: plt.minorticks_off()
         if self.ax != None:
+            if self._textbox == '': _titlepad = 15
+            else: _titlepad = 30
+            if self._title != '': self.ax.set_title(self._title, pad=_titlepad, loc='left')
             if self._grid:
                 self.ax.grid(True, which='major', axis='both', color='0.6')
                 self.ax.grid(True, which='minor', axis='both', color='0.85', linestyle='--')
@@ -423,7 +436,7 @@ class Grapher:
             self.ax.set(xlabel=self._axislabel[0], ylabel=self._axislabel[1])
             if self._textbox != '':
                 props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                self.ax.text(0.00001, 1.05, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                self.ax.text(0.00001, 1.07, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
                              verticalalignment='top', transform=self.ax.transAxes, bbox=props)
         elif len(self.axes) != 0:
             if self._textbox == '': _titlepad = 15
@@ -464,32 +477,46 @@ class Grapher:
                 self.axes[0].legend(loc='lower left', bbox_to_anchor=(0, 1.02, 1, 0.2))
             # ax.legend(title='Node index', loc='center left', bbox_to_anchor=(1, 0.5))
             pass
+        else:
+            err = 'the graph has not been initialized, please invoke method \"create_plot()\" to create plot/subplots'
+            raise Exception(err)
 
-    def make_plot(self, nplot=0):
+    def apply_format(self):
+        self._set_fmt()
+
+    def make_plot(self, nplot=0, **options):
         """Make plot, invoke before exporting plot.
 
         Parameters
         ----------
         nplot : int, optional
             the index of subplot to be taken effect on, by default 0
+        apply_format : bool, optional
+            apply all formatings, e.g., style, label, etc., default `False`
         """
-        # self._set_fmt()
+        apply_all_format = False
+        apply_style = True
+        for key, value in options.items():
+            if key == 'apply_all_format': apply_all_format = value
+            elif key == 'apply_style': apply_style = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        if apply_all_format: self._set_fmt()
         if self.ax != None:
             if self._x.any() == None or len(self._x) == 0 or self._y.any() == None or len(self._y) == 0:
-                self.ax.add_patch(patches.Rectangle((0, 0), 1, 1, color='1', alpha=0.75, fill=True, clip_on=False, transform=self.ax.transAxes, zorder=5))
-                self.ax.text(0.5, 0.5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.ax.transAxes, zorder=6)
+                self.ax.add_patch(patches.Rectangle((.01, .01), .98, .98, color='1', alpha=.75, fill=True, clip_on=False, transform=self.ax.transAxes, zorder=5))
+                self.ax.text(.5, .5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.ax.transAxes, zorder=6)
             else:
-                self.ax.plot(self._x, self._y, c=self._c, marker=self._m, markersize=self._ms,
+                self.ax.plot(self._x, self._y, c=self._c, marker=self._m, ms=self._ms, mfc=self._mfc,
                     ls=self._ls, lw=self._lw, label=self._plotlabel, zorder=2)
         elif len(self.axes) != 0:
             if self._x.any() == None or len(self._x) == 0 or self._y.any() == None or len(self._y) == 0:
-                self.axes[nplot].add_patch(patches.Rectangle((0.01, 0.01), 0.98, 0.98, color='1', alpha=0.75, fill=True, clip_on=False, transform=self.axes[nplot].transAxes, zorder=5))
-                self.axes[nplot].text(0.5, 0.5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.axes[nplot].transAxes, zorder=6)
+                self.axes[nplot].add_patch(patches.Rectangle((.01, .01), .98, .98, color='1', alpha=.75, fill=True, clip_on=False, transform=self.axes[nplot].transAxes, zorder=5))
+                self.axes[nplot].text(.5, .5, 'No Data', horizontalalignment='center', verticalalignment='center', transform=self.axes[nplot].transAxes, zorder=6)
             else:
-                self.axes[nplot].plot(self._x, self._y, c=self._c, marker=self._m, markersize=self._ms,
+                self.axes[nplot].plot(self._x, self._y, c=self._c, marker=self._m, ms=self._ms, mfc=self._mfc,
                     ls=self._ls, lw=self._lw, label=self._plotlabel, zorder=2)
         else:
-            err = 'the graph has not been initialized, please use method "create_plot" to create plot/subplots'
+            err = 'the graph has not been initialized, please invoke method \"create_plot()\" to create plot/subplots'
             raise Exception(err)
 
     def save_plot(self, filename: str, label='', ext='png', path='', tight_layout=True):
@@ -509,7 +536,7 @@ class Grapher:
             enable tight layout, by default `True`
         """
         self._set_fmt()
-        if label != '': filename += '_' + label
+        if label != '': filename += ' ({})'.format(label)
         if ext != '': filename += '.' + ext
         if tight_layout: self.fig.tight_layout()
         self.fig.savefig(os.path.join(path, filename))
@@ -769,7 +796,8 @@ class GraphHistogramDistribution(Grapher):
             elif key == 'symlogdata': self._xsymlogscale = value
             elif key == 'linthresh': self._xlinthresh = value
             else: print('Warning: the optional argument [{}] is not supported'.format(key))
-        if data.size == 0 or data.all() == None:
+
+        if data.size == 0 or all(data == None):
             self._x, self._y = np.array([]), np.array([])
         else:
             self._binsize = binsize
@@ -865,49 +893,16 @@ class GraphDensityDistribution(GraphHistogramDistribution):
         self._ls = '-'
         self._density_normalize = True
         self._normalize_to_factor = 1
-        self._axislabel[1] = 'Probabitlity density'
+        self._axislabel[1] = 'Probability density'
         self._grapher_mode = 'densitydistribution'
 
 
-class NeuralNetwork:
+class Tool:
 
-    def __init__(self, adjacency_matrix, input_folder=None, output_folder=None, delimiter='\t', number_of_neurons=4095, full_matrix_format=False):
-        """Tools for analyzing networks.
+    def __init__(self) -> None:
+        self._mode = ''
 
-        Parameters
-        ----------
-        adjacency_matrix : str or numpy.ndarray
-            a string storing the path to a local matrix file or an adjacency matrix in form of a numpy.ndarray
-        input_folder : str, optional
-            name or path of the input data folder, by default None
-        output_folder : str, optional
-            name or path of the output folder, by default None
-        delimiter : str or chr, optional
-            delimiter of the input matrix file, this argument only applies if `full_matrix_format` is enabled, by default `'\\t'`
-        network_size : int, optional
-            size of the network or number of neuron nodes, by default 4095
-        full_matrix_format : bool, optional
-            enable if the input matrix file stores the full matrix with each row element separated by `delimiter`;
-            disable if the file stores only the nonzero elements with format: j i w_ji, by default False
-        """
-        if type(adjacency_matrix).__module__ == np.__name__:
-            _, self.output_path = self._init_input_output_path(None, output_folder)
-            self.adjacency_matrix = adjacency_matrix
-            print('Adjacency matrix is input as a numpy.ndarray.')
-        elif type(adjacency_matrix) == str:
-            input_path, self.output_path = self._init_input_output_path(input_folder, output_folder)
-            self.adjacency_matrix = self._init_adjacency_matrix_from_file(adjacency_matrix, input_path, delimiter, number_of_neurons, full_matrix_format)
-            print('Adjacency matrix is input from a local file: {}.'.format(adjacency_matrix))
-        else:
-            err = 'ArgumentTypeError: the input argument \"adjacency matrix\" must either be a numpy.ndarray or a string storing the path to a local matrix file.'
-            print(err); exit(1)
-        np.fill_diagonal(self.adjacency_matrix, 0) # assume no self-linkage
-        self.number_of_neurons = number_of_neurons
-        self.isAdjMatModified = False
-
-    def __del__(self): pass
-
-    def _init_input_output_path(self, input_folder: str, output_folder: str):
+    def _init_input_output_path(self, input_folder: str, output_folder: str) -> tuple:
         this_dir = os.path.dirname(os.path.abspath(__file__))
         index = this_dir.rfind('\\')
         if input_folder != None:
@@ -922,145 +917,190 @@ class NeuralNetwork:
         else: output_path = ''
         return input_path, output_path
 
-    def _init_adjacency_matrix_from_file(self, adjacency_matrix_file: str, input_path: str, delimiter: str, network_size: int, full_matrix_format: bool):
+    def _graph_distribution_subroutine(self, data: np.ndarray, binsize: float, style=None, label=None, scale=None, graph=None, **options):
+        _xlabel = 'variable x'
+        _filename = 'Distribution plot'
+        title = ''
+        textbox = 'default'
+        fitgaussian = 'none'
+        filelabel = ''
+        fileextension = 'png'
+        subplotindex = 0
+        saveplotinfo = False
+
+        xlogscale = False
+        density = True
+        histogram = False
+
+        for key, value in options.items():
+            if key == '_xlabel': _xlabel = value
+            elif key == '_filename': _filename = value
+            elif key == 'title': title = value
+            elif key == 'textbox': textbox = value
+            elif key == 'fitgaussian': fitgaussian = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            elif key == 'saveplotinfo': saveplotinfo = value
+            elif key == 'xlogscale': xlogscale = value
+            elif key == 'density': density = value
+            elif key == 'histogram': histogram = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        if histogram: density = False
+
+        if data.size != 0:
+            # Remove 'None', if exist, from data
+            data = data[data != None]
+
+            min_datum = np.amin(data)
+            max_datum = np.amax(data)
+            if (max_datum - min_datum)/10 < binsize:
+                print('Warning: the chosen bin size = {} may be too large, it is recommended to use a value smaller than {}'.format(binsize, round_to_n((max_datum-min_datum)/10, 2)))
+
+        if graph == None:
+            graph = GraphDensityDistribution()
+            graph.create_plot(figsize=(9,7))
+            graph.add_data(data, binsize, logdata=xlogscale)
+            if fitgaussian != 'none':
+                if type(fitgaussian) == tuple: graph.fit_gaussian(c=fitgaussian[0], lw=fitgaussian[1])
+                else: graph.fit_gaussian()
+            if textbox == 'default':
+                if self._mode == 'NeuralNetwork':
+                    textbox = 'min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(min_datum), float(max_datum), float(binsize))
+                elif self._mode == 'NeuralDynamics':
+                    if not xlogscale:
+                        textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
+                                float(self._config[1]), float(min_datum), float(max_datum), float(binsize))
+                    else:
+                        textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size (log): {:.5}'.format(float(self._config[2]),
+                                float(self._config[1]), float(min_datum), float(max_datum), float(binsize))
+                graph.label_plot(dict(xlabel=_xlabel, title=title, textbox=textbox))
+            else: graph.label_plot(dict(xlabel=_xlabel, title=title, textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            if xlogscale: graph.set_scale(dict(xlogscale=True))
+            if scale != None: graph.set_scale(scale)
+            graph.make_plot()
+            graph.save_plot(_filename, filelabel, ext=fileextension, path=self._output_path)
+            if saveplotinfo: graph.save_plot_info(_filename, filelabel, path=self._output_path)
+        else:
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(data, binsize)
+            graph.make_plot(subplotindex)
+
+    def __del__(self): pass
+
+
+class NeuralNetwork(Tool):
+
+    def __init__(self, synaptic_weight_matrix, input_folder=None, output_folder=None, delimiter=' ', matrix_format='nonzero'):
+        """A tool for analyzing neural networks.
+
+        Parameters
+        ----------
+        synaptic_weight_matrix : str or numpy.ndarray
+            a matrix storing the synaptic weights/coupling strengths of neurons in a network:
+            - str: system path to a local matrix file
+            - numpy.ndarray: the matrix in form of a numpy.ndarray\n
+        input_folder : str, optional
+            full or relative path of the input folder, by default local folder\n
+        output_folder : str, optional
+            full or relative path of the output folder, by default local folder\n
+        delimiter : str or chr, optional
+            delimiter of the matrix file, by default `' '`(space)\n
+        matrix_format : {`'nonzero'`, `'full'`}, optional
+            - `'full'`: the matrix file stores the full matrix with elements in each row
+            - `'nonzero'`: the matrix file stores only the nonzero elements with format: {j i w_ji}\n
+
+        Raises
+        ------
+        FileNotFoundError
+            invalid os path for input or output files\n
+        TypeError
+            invalid argument type for `synaptic_weight_matrix`\n
+        ValueError
+            invalid argument value for `matrix_format`\n
+        """
+        if type(synaptic_weight_matrix).__module__ == np.__name__:
+            _, self._output_path = self._init_input_output_path(None, output_folder)
+            self.synaptic_weight_matrix = synaptic_weight_matrix
+            print('Synaptic weight matrix is imported as a numpy.ndarray')
+        elif type(synaptic_weight_matrix) == str:
+            input_path, self._output_path = self._init_input_output_path(input_folder, output_folder)
+            self.synaptic_weight_matrix = self._init_synaptic_weight_matrix_from_file(synaptic_weight_matrix, input_path, delimiter, matrix_format)
+            print('Synaptic weight matrix is imported from a local file: \"{}\"'.format(synaptic_weight_matrix))
+        else:
+            err = 'the input argument \"synaptic_weight_matrix\" must either be a numpy.ndarray or a string storing the path to a local matrix file'
+            raise TypeError(err)
+        np.fill_diagonal(self.synaptic_weight_matrix, 0) # assume no self-linkage
+        self._isAdjMatModified = False
+        self._mode = 'NeuralNetwork'
+
+    def _init_synaptic_weight_matrix_from_file(self, synaptic_weight_matrix_file: str, input_path: str, delimiter: chr, matrix_format: str):
         try:
-            with open(os.path.join(input_path, adjacency_matrix_file), 'r', newline='') as fp:
-                if full_matrix_format == False:
-                    content = list(csv.reader(fp, delimiter=' '))
-                    for i in range(len(content)):
+            with open(os.path.join(input_path, synaptic_weight_matrix_file), 'r', newline='') as fp:
+                content = list(csv.reader(fp, delimiter=delimiter))
+                if matrix_format == 'nonzero':
+                    network_size = int(content[0][0]) # N
+                    for i in range(1, len(content)):
                         content[i] = remove_all_occurrences('', content[i])
                         content[i][0] = int(content[i][0])-1 # j
                         content[i][1] = int(content[i][1])-1 # i
                         content[i][2] = float(content[i][2]) # w_ij
-                    adjacency_matrix = np.zeros((network_size, network_size))
-                    for item in content:
-                        adjacency_matrix[item[1]][item[0]] = item[2]
+                    synaptic_weight_matrix = np.zeros((network_size, network_size))
+                    for item in content[1:]:
+                        synaptic_weight_matrix[item[1]][item[0]] = item[2]
                     del content
-                    adjacency_matrix = np.array(adjacency_matrix).astype(float)
-                else:
-                    reader = csv.reader(fp, delimiter=delimiter)
-                    adjacency_matrix = np.array(list(reader)).astype(float)
+                    synaptic_weight_matrix = np.array(synaptic_weight_matrix).astype(float)
+                elif matrix_format == 'full':
+                    synaptic_weight_matrix = np.array(content).astype(float)
         except FileNotFoundError:
-            err = 'FileNotFoundError: adjacency matrix file \"{}\" cannot be found.'.format(os.path.join(input_path, adjacency_matrix_file))
-            print(err); exit(1)
-        return adjacency_matrix
+            err = 'Synaptic weight matrix file \"{}\" cannot be found.'.format(os.path.join(input_path, synaptic_weight_matrix_file))
+            raise FileNotFoundError(err)
+        return synaptic_weight_matrix
 
-    def _init_synaptic_weight(self, _adjacency_matrix=None, _custom_matrix=False):
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
-        negative_weights = np.array(_adjacency_matrix.flatten()[_adjacency_matrix.flatten() < 0])
-        positive_weights = np.array(_adjacency_matrix.flatten()[_adjacency_matrix.flatten() > 0])
-        nonzero_weights = np.array(_adjacency_matrix.flatten()[_adjacency_matrix.flatten() != 0])
+    def _init_synaptic_weight(self, **kwargs) -> tuple:
+        synaptic_weight_matrix = self.synaptic_weight_matrix
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix': synaptic_weight_matrix = value
+        negative_weights = np.array(synaptic_weight_matrix.flatten()[synaptic_weight_matrix.flatten() < 0])
+        positive_weights = np.array(synaptic_weight_matrix.flatten()[synaptic_weight_matrix.flatten() > 0])
+        nonzero_weights = np.array(synaptic_weight_matrix.flatten()[synaptic_weight_matrix.flatten() != 0])
         return negative_weights, positive_weights, nonzero_weights
 
-    def _plot_distribution(self, data, bin_size=0.15, color='b', marker_style='^', line_style='-',
-                           plot_type='line', marker_size=8, marker_fill=True, line_width=2,
-                           figsize=(9, 6), dpi=150, plot_label='', xlabel='', textbox='',
-                           xlim=(None, None), ylim=(None, None), show_norm=False,
-                           x_logscale=False, y_logscale=False, remove_zero_density=False,
-                           file_name='plot_dist', file_label='', file_type=['svg','png'],
-                           save_fig=True, show_fig=False, mpl_ax=None,
-                           return_plot_data=False, return_area_under_graph=False):
-
-        # Return ax
-        def plot_subroutine(x, y, ax, ptype: str, plabel: str, plot_norm=False):
-            if plot_norm: c='k'; marker='None'; ls='--'; plabel=''
-            else: c=color; marker=marker_style; ls=line_style
-            if marker_fill == True:
-                if ptype == 'line': ax.plot(x, y, c=c, marker=marker, ms=marker_size, ls=ls, lw=line_width,
-                                                label=plabel)
-                else: ax.scatter(x, y, c=c, marker=marker, s=marker_size, label=plabel)
-            else:
-                if ptype == 'line': ax.plot(x, y, c=c, marker=marker, ms=marker_size, ls=ls, lw=line_width,
-                                                mfc='none', label=plabel)
-                else: ax.scatter(x, y, c=c, marker=marker, s=marker_size, facecolors='none', label=plabel)
-            return ax
-        
-        # Return ax, plot_data, area_under_graph
-        def make_plot(ax):
-            min_datum = np.amin(data); max_datum = np.amax(data)
-            if show_norm == True:
-                mu = np.mean(data); sigma = np.std(data)
-                x_value_norm = np.linspace(mu - 4*sigma, mu + 4*sigma, 150)
-                ax = plot_subroutine(x_value_norm, stats.norm.pdf(x_value_norm, mu, sigma), ax,
-                                     'line', 'Normal distribution', plot_norm=True)
-            if x_logscale == False:
-                number_of_bins = math.ceil((max_datum - min_datum) / bin_size)
-                hist_density, bin_edges = np.histogram(data, bins=np.linspace(min_datum, min_datum+number_of_bins*bin_size,
-                                                                              number_of_bins), density=True)
-            elif x_logscale == True:
-                min_datum = np.amin(np.array(data)[np.array(data) > 0])
-                number_of_bins = math.ceil((math.log10(max_datum) - math.log10(min_datum)) / bin_size)
-                hist_density, bin_edges = np.histogram(data, bins=np.logspace(math.log10(min_datum),
-                                                       math.log10(min_datum)+number_of_bins*bin_size, number_of_bins))
-            hist_density = np.array(hist_density, dtype=float)
-            hist_density /= np.dot(hist_density, np.diff(bin_edges)) # normalization
-            x_value = (bin_edges[1:] + bin_edges[:-1]) / 2
-            area_under_graph = np.dot(hist_density, np.diff(bin_edges))
-            if remove_zero_density == True:
-                non_zero_points = np.argwhere(hist_density == 0)
-                hist_density = np.delete(hist_density, non_zero_points, 0)
-                x_value = np.delete(x_value, non_zero_points, 0)
-            return plot_subroutine(x_value, hist_density, ax,
-                                   plot_type, plot_label), np.array(list(zip(x_value,hist_density))), area_under_graph
-
-        # Return ax
-        def format_plot(ax):
-            if x_logscale == True: ax.set_xscale('log')
-            if y_logscale == True: ax.set_yscale('log')
-            ax.set(xlabel=xlabel, ylabel='Probability density')
-            ax.set_xlim(xlim[0], xlim[1])
-            ax.set_ylim(ylim[0], ylim[1])
-            ax.grid(True)
-            handles, labels = ax.get_legend_handles_labels()
-            ax.legend(reversed(handles), reversed(labels))#, title='Distribution')
-            # textbox
-            if textbox != '':
-                props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                ax.text(0.00001, 1.05, textbox, fontsize=10, verticalalignment='top', transform=ax.transAxes, bbox=props)
-            return ax
-
-        if mpl_ax == None:
-            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-            ax, plot_data, area_under_graph = make_plot(ax)
-            ax = format_plot(ax)
-            plt.tight_layout()
-            for ext in file_type:
-                if file_label == '': file_path = file_name+'.'+ext
-                else: file_path = file_name+'_'+file_label+'.'+ext
-                if save_fig: fig.savefig(os.path.join(self.output_path, file_path))
-            if show_fig: plt.show()
-            plt.clf()
-            if return_plot_data and not return_area_under_graph: return plot_data
-            elif not return_plot_data and return_area_under_graph: return area_under_graph
-            else: return plot_data, area_under_graph
-        else:
-            ax, plot_data, _ = make_plot(mpl_ax)
-            if return_plot_data: return ax, plot_data
-            else: return ax
-
-    def fwrite_adjacency_matrix(self, file_name='adjacency_matrix', file_label='', file_type='txt', full_matrix_format=False, _matrix=None, _custom_matrix=False):
-        """Write adjacency matrix of the network into a local file."""
-        if _custom_matrix == False: _matrix = self.adjacency_matrix
-        if file_label == '': file_path = '{}.{}'.format(file_name, file_type)
-        else: file_path = '{}_{}.{}'.format(file_name, file_label, file_type)
-        if full_matrix_format:
-            with open(self.output_path+file_path, 'w') as fp:
-                for row in _matrix:
+    def write_synaptic_weight_matrix_info_file(self, filename='synaptic_weight_matrix', filelabel='', ext='txt', matrix_format='nonzero', delimiter=' ', **kwargs):
+        """Write synaptic weight matrix of the network into a local file."""
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
+        if filelabel == '': filepath = '{}.{}'.format(filename, ext)
+        else: filepath = '{}_{}.{}'.format(filename, filelabel, ext)
+        with open(os.path.join(self._output_path, filepath), 'w') as fp:
+            if matrix_format == 'nonzero':
+                fp.write(str(len(synaptic_weight_matrix)))
+                for i in range(len(synaptic_weight_matrix)):
+                    for j in range(len(synaptic_weight_matrix[i])):
+                        if synaptic_weight_matrix[i][j] != 0:
+                            fp.write('\n{:d}{}{:d}{}{:.10f}'.format(j+1, delimiter, i+1, delimiter, synaptic_weight_matrix[i][j]))
+            elif matrix_format == 'full':
+                for row in synaptic_weight_matrix:
                     if row[0] == 0: fp.write('{:.0f}'.format(row[0])) # To reduce file size
                     else:           fp.write( '{:.8}'.format(row[0]))
                     for element in row[1:]:
                         if element == 0:    fp.write('\t{:.0f}'.format(element)) # To reduce file size
                         else:               fp.write( '\t{:.8}'.format(element))
                     fp.write('\n')
-        else:
-            with open(self.output_path+file_path, 'w') as fp:
-                for i in range(len(_matrix)):
-                    for j in range(len(_matrix[i])):
-                        if _matrix[i][j] != 0:
-                            fp.write('{:d}{}{:d}{}{:f}\n'.format(j+1, ' ', i+1, ' ', _matrix[i][j]))
-        print('Writing adjacency matrix: output to [{}] in directory [{}]'.format(file_path, self.output_path))
 
-    def statistics_of_synaptic_weights(self, link_type: str, q=0.5, _adjacency_matrix=None, _custom_matrix=False)->tuple:
+            else:
+                err = 'the optional argument \"matrix_format\" can only be \'nonezero\' or \'full\''
+                raise ValueError(err)
+        print('Writing synaptic weight matrix: export to \"{}\" in directory \"{}\"'.format(filepath, self._output_path))
+
+    def statistics_of_synaptic_weights(self, link_type: str, q=0.5, **kwargs) -> tuple:
         """Find the statistics of synaptic weights of the network.
 
         Parameters
@@ -1075,7 +1115,13 @@ class NeuralNetwork:
         tuple (scalar, scalar, scalar)
             mean, standanrd deviation, q-th percentile of the requested type of synaptic weights
         """
-        syn_w_neg, syn_w_pos, syn_w = self._init_synaptic_weight(_adjacency_matrix, _custom_matrix)
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
+        syn_w_neg, syn_w_pos, syn_w = self._init_synaptic_weight(synaptic_weight_matrix=synaptic_weight_matrix)
         mean_neg, mean_pos, mean_all = np.mean(syn_w_neg), np.mean(syn_w_pos), np.mean(syn_w)
         std_neg, std_pos, std_all = np.std(syn_w_neg), np.std(syn_w_pos), np.std(syn_w)
         pct_neg, pct_pos, pct_all = np.percentile(syn_w_neg, q), np.percentile(syn_w_pos, q), np.percentile(syn_w, q)
@@ -1083,19 +1129,24 @@ class NeuralNetwork:
         if link_type == 'exc': return mean_pos, std_pos, pct_pos
         else: return mean_all, std_all, pct_all
 
-    def connection_probability(self, _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def connection_probability(self, **kwargs) -> float:
         """Return the connection probability of the network."""
-        if _custom_matrix == False:
-            matrix_size = np.shape(self.adjacency_matrix)[0]
-            _, _, nonzero_weights = self._init_synaptic_weight()
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if custom:
+            matrix_size = np.shape(synaptic_weight_matrix)[0]
+            _, _, nonzero_weights = self._init_synaptic_weight(custom_synaptic_weight_matrix=synaptic_weight_matrix)
         else:
-            matrix_size = np.shape(_adjacency_matrix)[0]
-            _, _, nonzero_weights = self._init_synaptic_weight(_adjacency_matrix)
+            matrix_size = np.shape(self.synaptic_weight_matrix)[0]
+            _, _, nonzero_weights = self._init_synaptic_weight()
         num_of_links = len(nonzero_weights)
         connection_probability = num_of_links / (matrix_size * (matrix_size - 1))
         return connection_probability
 
-    def number_of_links(self, link_type='', _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def number_of_links(self, linktype: str, **kwargs) -> np.ndarray:
         """Return the number of links in the network.
 
         Parameters
@@ -1109,40 +1160,47 @@ class NeuralNetwork:
             an array of number of links of requested type, else an array with 0th, 1st, 2nd element
             storing the array of number of links of inhibitory, excitatory, all neurons correspondingly
         """
-        if _custom_matrix == False: negative_weights, positive_weights, nonzero_weights = self._init_synaptic_weight()
-        else: negative_weights, positive_weights, nonzero_weights = self._init_synaptic_weight(_adjacency_matrix)
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if custom: negative_weights, positive_weights, nonzero_weights = self._init_synaptic_weight(synaptic_weight_matrix)
+        else: negative_weights, positive_weights, nonzero_weights = self._init_synaptic_weight()
         number_of_links = []
         number_of_links.append(len(negative_weights))
         number_of_links.append(len(positive_weights))
         number_of_links.append(len(nonzero_weights))
-        if link_type == 'inh': return np.array(number_of_links)[0]
-        if link_type == 'exc': return np.array(number_of_links)[1]
-        if link_type == 'all': return np.array(number_of_links)[2]
+        if linktype == 'inh': return np.array(number_of_links)[0]
+        if linktype == 'exc': return np.array(number_of_links)[1]
+        if linktype == 'all': return np.array(number_of_links)[2]
         else: return np.array(number_of_links)
 
-    def neuron_type(self, _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def neuron_type(self, **kwargs) -> np.ndarray:
         """Return the electrophysiological class of neurons in the network."""
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
-        matrix_size = np.shape(_adjacency_matrix)[0]
+        synaptic_weight_matrix = self.synaptic_weight_matrix
+        for key, value in kwargs:
+            if key == 'custom_synaptic_weight_matrix': synaptic_weight_matrix = value
+        matrix_size = np.shape(synaptic_weight_matrix)[0]
         neuron_type = np.zeros(matrix_size)
-        for row in _adjacency_matrix:
+        for row in synaptic_weight_matrix:
             for idx in range(matrix_size):
                 if row[idx] < 0:
-                    if neuron_type[idx] == 1: print('Warning: inconsistent classification in neuron type.')
+                    if neuron_type[idx] == 1: print('Warning: inconsistent classification in neuron type')
                     neuron_type[idx] = -1
                 elif row[idx] > 0:
-                    if neuron_type[idx] == -1: print('Warning: inconsistent classification in neuron type.')
+                    if neuron_type[idx] == -1: print('Warning: inconsistent classification in neuron type')
                     neuron_type[idx] = 1
         return neuron_type
 
-    def excitatory_to_inhibitory_ratio(self)->float:
+    def excitatory_to_inhibitory_ratio(self) -> float:
         """Return the ratio of excitatory neurons to inhibitory neurons."""
         exc = np.count_nonzero(self.neuron_type() == +1)
         inh = np.count_nonzero(self.neuron_type() == -1)
         if inh == 0: return np.Inf
         else: return exc/inh
 
-    def incoming_degree(self, link_type='', _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def incoming_degree(self, link_type: str, **kwargs) -> np.ndarray:
         """Return the incoming degree of neurons in the network.
 
         Parameters
@@ -1156,9 +1214,14 @@ class NeuralNetwork:
             an array of incoming degrees of requested type, else an array with 0th, 1st, 2nd element
             storing the array of incoming degrees of inhibitory, excitatory, all neurons correspondingly
         """
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
         incoming_degree, temp = [], []
-        for row in _adjacency_matrix:
+        for row in synaptic_weight_matrix:
             temp.append(len(row[row < 0]))  #inh
             temp.append(len(row[row > 0]))  #exc
             temp.append(len(row[row != 0])) #all
@@ -1169,14 +1232,19 @@ class NeuralNetwork:
         if link_type == 'all': return np.array(incoming_degree).T[2]
         else: return np.array(incoming_degree).T
 
-    def outgoing_degree(self, _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def outgoing_degree(self, **kwargs) -> np.ndarray:
         """Return the outgoing degree of neurons in the network."""
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
         outgoing_degree = []
-        for row in _adjacency_matrix.T: outgoing_degree.append(len(row[row != 0]))
+        for row in synaptic_weight_matrix.T: outgoing_degree.append(len(row[row != 0]))
         return np.array(outgoing_degree)
 
-    def average_synaptic_weights_of_incoming_links(self, link_type='', _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def average_synaptic_weights_of_incoming_links(self, linktype: str, **kwargs) -> np.ndarray:
         """Return the avergae synaptic weights of incoming links of neurons in the network.
 
         Parameters
@@ -1190,13 +1258,18 @@ class NeuralNetwork:
             an array of average incoming synaptic weights of requested type, else an array with 0th, 1st, 2nd element
             storing the array of average incoming synaptic weights of inhibitory, excitatory, all neurons correspondingly
         """
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
-        average_weights_in = []; temp = []
-        for row in _adjacency_matrix:
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
+        average_weights_in, temp = [], []
+        for row in synaptic_weight_matrix:
             k_inh = len(row[row < 0])
             k_exc = len(row[row > 0])
             k_all = len(row[row != 0])
-            if k_inh != 0: temp.append(abs(np.sum(row[row < 0]) / k_inh))
+            if k_inh != 0: temp.append(np.sum(row[row < 0]) / k_inh)
             else: temp.append(None)
             if k_exc != 0: temp.append(np.sum(row[row > 0]) / k_exc)
             else: temp.append(None)
@@ -1204,12 +1277,12 @@ class NeuralNetwork:
             else: temp.append(None)
             average_weights_in.append(np.array(temp))
             temp.clear()
-        if link_type == 'inh': return np.array(average_weights_in).T[0]
-        if link_type == 'exc': return np.array(average_weights_in).T[1]
-        if link_type == 'all': return np.array(average_weights_in).T[2]
+        if linktype == 'inh': return np.array(average_weights_in).T[0]
+        if linktype == 'exc': return np.array(average_weights_in).T[1]
+        if linktype == 'all': return np.array(average_weights_in).T[2]
         else: return np.array(average_weights_in).T
 
-    def average_synaptic_weights_of_outgoing_links(self, link_type='', _adjacency_matrix=None, _custom_matrix=False)->np.ndarray:
+    def average_synaptic_weights_of_outgoing_links(self, linktype: str, **kwargs) -> np.ndarray:
         """Return the avergae synaptic weights of outgoing links of neurons in the network.
 
         Parameters
@@ -1223,613 +1296,147 @@ class NeuralNetwork:
             an array of average outgoing synaptic weights of requested type, else an array with 0th, 1st, 2nd element
             storing the array of average outgoing synaptic weights of inhibitory, excitatory, all neurons correspondingly
         """
-        if _custom_matrix == False: _adjacency_matrix = self.adjacency_matrix
+        custom = False
+        for key, value in kwargs:
+            if key == 'synaptic_weight_matrix':
+                synaptic_weight_matrix = value
+                custom = True
+        if not custom: synaptic_weight_matrix = self.synaptic_weight_matrix
         average_weights_out, temp = [], []
-        for row in _adjacency_matrix.T:
-            k_inh = len(row[row < 0])
-            k_exc = len(row[row > 0])
-            k_all = len(row[row != 0])
-            if k_inh != 0: temp.append(abs(np.sum(row[row < 0]) / k_inh))
+        for col in synaptic_weight_matrix.T:
+            k_inh = len(col[col < 0])
+            k_exc = len(col[col > 0])
+            k_all = len(col[col != 0])
+            if k_inh != 0: temp.append(np.sum(col[col < 0]) / k_inh)
             else: temp.append(None)
-            if k_exc != 0: temp.append(np.sum(row[row > 0]) / k_exc)
+            if k_exc != 0: temp.append(np.sum(col[col > 0]) / k_exc)
             else: temp.append(None)
-            if k_all != 0: temp.append(np.sum(row[row != 0]) / k_all)
+            if k_all != 0: temp.append(np.sum(col[col != 0]) / k_all)
             else: temp.append(None)
             average_weights_out.append(np.array(temp))
             temp.clear()
-        if link_type == 'inh': return np.array(average_weights_out).T[0]
-        if link_type == 'exc': return np.array(average_weights_out).T[1]
-        if link_type == 'all': return np.array(average_weights_out).T[2]
-        else: return np.array(average_weights_out)
+        if linktype == 'inh': return np.array(average_weights_out).T[0]
+        if linktype == 'exc': return np.array(average_weights_out).T[1]
+        if linktype == 'all': return np.array(average_weights_out).T[2]
+        else: return np.array(average_weights_out).T
 
-    def plot_synaptic_weight_distribution_NEG(self, bin_size=0.001, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                              show_norm=False, xlim=(None, None), x_logscale=False,
-                                              y_logscale=False, remove_zero_density=False,
-                                              plot_label='', file_label='', file_type=['svg','png']):
-        """Plot the distribution of negative synaptic weights.
-
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 0.001
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
-        negative_weights = self._init_synaptic_weight()[0]
+    def plot_synaptic_weight_distribution_NEG(self, binsize: float, style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of negative synaptic weights."""
         print('Drawing graph: distribution of negative synaptic weights')
-        if mpl_ax == None:
-            return self._plot_distribution(negative_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'Negative w_ij distribution', 'Negative w_ij',
-                                           'Distribution of negative synaptic weights', xlim, (0, None),
-                                           show_norm, x_logscale, y_logscale, remove_zero_density,
-                                           'plot_synaptic_weight_dist_neg', file_label, file_type)
-        else:
-            return self._plot_distribution(negative_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        negative_weight = self._init_synaptic_weight()[0]
 
-    def plot_synaptic_weight_distribution_POS(self, bin_size=0.001, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                              show_norm=False, xlim=(None, None), x_logscale=False,
-                                              y_logscale=False, remove_zero_density=False,
-                                              plot_label='', file_label='', file_type=['svg','png']):
-        """Plot the distribution of positive synaptic weights.
+        _xlabel = r'Negative synaptic weight w$_{ij}^-$'
+        _filename = 'Distribution of negative synaptic weights'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 0.001
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
+        self._graph_distribution_subroutine(negative_weight, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
-        positive_weights = self._init_synaptic_weight()[1]
+    def plot_synaptic_weight_distribution_POS(self, binsize: float, style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of positive synaptic weights."""
         print('Drawing graph: distribution of positive synaptic weights')
-        if mpl_ax == None:
-            return self._plot_distribution(positive_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'Positive w_ij distribution', 'Positive w_ij',
-                                           'Distribution of positive synaptic weights', xlim, (0, None),
-                                           show_norm, x_logscale, y_logscale, remove_zero_density,
-                                           'plot_synaptic_weight_dist_pos', file_label, file_type)
-        else:
-            return self._plot_distribution(positive_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        positive_weight = self._init_synaptic_weight()[1]
 
-    def plot_synaptic_weight_distribution(self, bin_size=0.001, mpl_ax=None, c='b', m='^', ls='-',
-                                          pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                          show_norm=False, xlim=(None, None), x_logscale=False,
-                                          y_logscale=False, remove_zero_density=False,
-                                          plot_label='', file_label='', file_type=['svg','png']):
-        """Plot the distribution of synaptic weights.
+        _xlabel = r'Positive synaptic weight w$_{ij}^+$'
+        _filename = 'Distribution of positive synaptic weights'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 0.001
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
+        self._graph_distribution_subroutine(positive_weight, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
-        nonzero_weights = self._init_synaptic_weight()[2]
+    def plot_synaptic_weight_distribution(self, binsize: float, style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of synaptic weights."""
         print('Drawing graph: distribution of synaptic weights')
-        if mpl_ax == None:
-            return self._plot_distribution(nonzero_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'w_ij distribution', 'w_ij',
-                                           'Distribution of synaptic weights', xlim, (0, None),
-                                           show_norm, x_logscale, y_logscale, remove_zero_density,
-                                           'plot_synaptic_weight_dist', file_label, file_type)
-        else:
-            return self._plot_distribution(nonzero_weights, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        nonzero_weight = self._init_synaptic_weight()[2]
 
-    def plot_incoming_degree_distribution_INH(self, bin_size=1, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                              show_norm=False, xlim=(None, None), x_logscale=False,
-                                              y_logscale=False, remove_zero_density=False,
-                                              plot_label='line', file_label='', file_type=['svg','png'],
-                                              plot_node=[]):
-        """Plot the distribution of inhibitory incoming degrees.
+        _xlabel = r'Synaptic weight w$_{ij}$'
+        _filename = 'Distribution of synaptic weights'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        plot_node : list, optional
-            the selected nodes to be plotted, by default [] (plot all nodes)
+        self._graph_distribution_subroutine(nonzero_weight, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
+    def plot_incoming_degree_distribution_INH(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of inhibitory incoming degrees."""
+        print('Drawing graph: distribution of inhibitory incoming degree')
         inc_deg_inh = self.incoming_degree('inh')
-        if len(plot_node) != 0: inc_deg_inh = inc_deg_inh[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(inc_deg_inh, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'k-_in distribution', 'k-_in',
-                                           'Distribution of inhibitory incoming degree | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_incoming_degree_inh',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(inc_deg_inh, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        if len(specific_neurons) != 0: inc_deg_inh = inc_deg_inh[specific_neurons]
 
-    def plot_incoming_degree_distribution_EXC(self, bin_size=1, mpl_ax=None, c='b', m='^', ls='-',
-                                              pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                              show_norm=False, xlim=(None, None), x_logscale=False,
-                                              y_logscale=False, remove_zero_density=False,
-                                              plot_label='line', file_label='', file_type=['svg','png'],
-                                              plot_node=[]):
-        """Plot the distribution of excitatory incoming degrees.
+        _xlabel = r'Inhibitory incoming degree k$_{in}^-$'
+        _filename = 'Distribution of inhibitory incoming degrees'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        plot_node : list, optional
-            the selected nodes to be plotted, by default [] (plot all nodes)
+        self._graph_distribution_subroutine(inc_deg_inh, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
+    def plot_incoming_degree_distribution_EXC(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of excitatory incoming degrees."""
+        print('Drawing graph: distribution of excitatory incoming degree')
         inc_deg_exc = self.incoming_degree('exc')
-        if len(plot_node) != 0: inc_deg_exc = inc_deg_exc[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(inc_deg_exc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'k+_in distribution', 'k+_in',
-                                           'Distribution of excitatory incoming degree | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_incoming_degree_exc',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(inc_deg_exc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        if len(specific_neurons) != 0: inc_deg_exc = inc_deg_exc[specific_neurons]
 
-    def plot_incoming_degree_distribution(self, bin_size=1, mpl_ax=None, c='b', m='^', ls='-',
-                                          pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                          show_norm=False, xlim=(None, None), x_logscale=False,
-                                          y_logscale=False, remove_zero_density=False,
-                                          plot_label='line', file_label='', file_type=['svg','png'],
-                                          plot_node=[]):
-        """Plot the distribution of incoming degrees.
+        _xlabel = r'Excitatory incoming degree k$_{in}^+$'
+        _filename = 'Distribution of excitatory incoming degrees'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        plot_node : list, optional
-            the selected nodes to be plotted, by default [] (plot all nodes)
+        self._graph_distribution_subroutine(inc_deg_exc, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
+    def plot_incoming_degree_distribution(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of incoming degrees."""
+        print('Drawing graph: distribution of incoming degree')
         inc_deg_all = self.incoming_degree('all')
-        if len(plot_node) != 0: inc_deg_all = inc_deg_all[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(inc_deg_all, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'k_in distribution', 'k_in',
-                                           'Distribution of incoming degree | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_incoming_degree',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(inc_deg_all, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        if len(specific_neurons) != 0: inc_deg_all = inc_deg_all[specific_neurons]
 
-    def plot_outgoing_degree_distribution(self, bin_size=1, mpl_ax=None, c='b', m='^', ls='-',
-                                          pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                          show_norm=False, xlim=(None, None), x_logscale=False,
-                                          y_logscale=False, remove_zero_density=False,
-                                          plot_label='line', file_label='', file_type=['svg','png'],
-                                          plot_node=[]):
-        """Plot the distribution of outgoing degrees.
+        _xlabel = r'Incoming degree k$_{in}$'
+        _filename = 'Distribution of incoming degrees'
 
-        Parameters
-        ----------
-        bin_size : int, optional
-            size of bin, by default 1
-        mpl_ax : matplotlib.axes.Axes, optional
-            if a matplotlib Axes is given, append the plot to the Axes, by default None
-        c : str, optional
-            colour of lines and markers, by default 'b'
-        m : str, optional
-            type of marker, e.g., '^', 'o', etc, see matplotlib for details, by default '^'
-        ls : str, optional
-            style of line, e.g., '-', ':', etc, see matplotlib for details, by default '-'
-        pt : str, optional
-            plot type, options: 'line' or 'scatter', by default 'line'
-        ms : int, optional
-            size of marker, by default 8
-        mfc : bool, optional
-            marker face fill, solid markers if True, open markers if False, by default True
-        lw : int, optional
-            line weight, by default 2
-        figsize : tuple of float, optional
-            figure size, by default (9, 6)
-        dpi : int, optional
-            dots per inch, by default 150
-        show_norm : bool, optional
-            show a normal distribution with mean and S.D. of the data if True, by default False
-        xlim : tuple, optional
-            range of x-axis, by default (None, None)
-        x_logscale : bool, optional
-            x-axis in log scale if True, by default False
-        y_logscale : bool, optional
-            y-axis in log scale if True, by default False
-        remove_zero_density : bool, optional
-            remove zero density when `x_logscale` is enabled to maintain a connected graph, by default False
-        plot_label : str, optional
-            label of the plot to be shown in legend, by default 'line'
-        file_label : str, optional
-            label of the file to be appended at the end of the file name, by default ''
-        file_type : list, optional
-            format(s)/extension(s) of the output plot, by default ['svg','png']
-        plot_node : list, optional
-            the selected nodes to be plotted, by default [] (plot all nodes)
+        self._graph_distribution_subroutine(inc_deg_all, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-        Returns
-        -------
-        tuple (numpy.ndarray, int)
-            if `mpl_ax` is not provided, return a tuple of (plot data, area under curve)
-        matplotlib.axes.Axes
-            if `mpl_ax` is provided, return the Axes with the plot appended
-        """
-        print('Drawing graph: distribution of outgoing degree')
-        out_deg = self.out_deg()
-        if len(plot_node) != 0: outgoing_degree = outgoing_degree[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(out_deg, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 'k_out distribution', 'k_out',
-                                           'Distribution of outgoing degree | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_outgoing_degree',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(out_deg, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+    def plot_outgoing_degree_distribution(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of outgoing degrees."""
+        print('Drawing graph: distribution of outgoing degrees')
+        out_deg = self.outgoing_degree()
+        if len(specific_neurons) != 0: out_deg = out_deg[specific_neurons]
 
-    def plot_incoming_average_weight_distribution_INH(self, bin_size=0.0003, mpl_ax=None, c='b', m='^',ls='-',
-                                                      pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                                      show_norm=False, xlim=(None, None), x_logscale=False,
-                                                      y_logscale=False, remove_zero_density=False,
-                                                      plot_label='line', file_label='', file_type=['svg','png'],
-                                                      plot_node=[]):
-        avg_w_inc_inh = self.average_synaptic_weights_of_incoming_links('inh')
-        if len(plot_node) != 0: avg_w_inc_inh = avg_w_inc_inh[plot_node]
+        _xlabel = r'Outgoing degree k$_{out}$'
+        _filename = 'Distribution of outgoing degrees'
+
+        self._graph_distribution_subroutine(out_deg, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
+
+    def plot_incoming_average_weight_distribution_INH(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of average synaptic weights of inhibitory incoming links."""
         print('Drawing graph: distribution of average synaptic weights of inhibitory incoming links')
-        if mpl_ax == None:
-            return self._plot_distribution(avg_w_inc_inh, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, '|s-_in| distribution', '|s-_in|',
-                                           'Distribution of average synaptic weights of inhibitory incoming links | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_s_in_inh',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(avg_w_inc_inh, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        avg_w_inc_inh = self.average_synaptic_weights_of_incoming_links('inh')
+        if len(specific_neurons) != 0: avg_w_inc_inh = avg_w_inc_inh[specific_neurons]
 
-    def plot_incoming_average_weight_distribution_EXC(self, bin_size=0.0003, mpl_ax=None, c='b', m='^',ls='-',
-                                                      pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                                      show_norm=False, xlim=(None, None), x_logscale=False,
-                                                      y_logscale=False, remove_zero_density=False,
-                                                      plot_label='line', file_label='', file_type=['svg','png'],
-                                                      plot_node=[]):
+        _xlabel = r'Average synaptic weight of inhibitory incoming links s$_{in}^-$'
+        _filename = 'Distribution of average synaptic weights of inhibitory incoming links'
+
+        self._graph_distribution_subroutine(avg_w_inc_inh, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
+
+    def plot_incoming_average_weight_distribution_EXC(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of average synaptic weights of excitatory incoming links."""
         print('Drawing graph: distribution of average synaptic weights of excitatory incoming links')
         avg_w_inc_exc = self.average_synaptic_weights_of_incoming_links('exc')
-        if len(plot_node) != 0: avg_w_inc_exc = avg_w_inc_exc[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(avg_w_inc_exc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 's+_in distribution', 's+_in',
-                                           'Distribution of average synaptic weights of excitatory incoming links | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_s_in_exc',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(avg_w_inc_exc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        if len(specific_neurons) != 0: avg_w_inc_exc = avg_w_inc_exc[specific_neurons]
 
-    def plot_incoming_average_weight_distribution(self, bin_size=0.0003, mpl_ax=None, c='b', m='^',ls='-',
-                                                  pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                                  show_norm=False, xlim=(None, None), x_logscale=False,
-                                                  y_logscale=False, remove_zero_density=False,
-                                                  plot_label='line', file_label='', file_type=['svg','png'],
-                                                  plot_node=[]):
+        _xlabel = r'Average synaptic weight of excitatory incoming links s$_{in}^-$'
+        _filename = 'Distribution of average synaptic weights of excitatory incoming links'
+
+        self._graph_distribution_subroutine(avg_w_inc_exc, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
+
+    def plot_incoming_average_weight_distribution(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of average synaptic weights of incoming links."""
         print('Drawing graph: distribution of average synaptic weights of incoming links')
         avg_w_inc = self.average_synaptic_weights_of_incoming_links('all')
-        if len(plot_node) != 0: avg_w_inc = avg_w_inc[plot_node]
-        if mpl_ax == None:
-            return self._plot_distribution(avg_w_inc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, 's_in distribution', 's_in',
-                                           'Distribution of average synaptic weights of incoming links | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_s_in',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(avg_w_inc, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        if len(specific_neurons) != 0: avg_w_inc = avg_w_inc[specific_neurons]
 
-    def plot_outgoing_average_weight_distribution(self, bin_size=0.0003, mpl_ax=None, c='b', m='^', ls='-',
-                                                  pt='line', ms=8, mfc=True, lw=2, figsize=(9, 6), dpi=150,
-                                                  show_norm=False, xlim=(None, None), x_logscale=False,
-                                                  y_logscale=False, remove_zero_density=False,
-                                                  plot_label='line', file_label='', file_type=['svg','png'],
-                                                  plot_node=[]):
+        _xlabel = r'Average synaptic weight of incoming links s$_{in}$'
+        _filename = 'Distribution of average synaptic weights of incoming link'
+
+        self._graph_distribution_subroutine(avg_w_inc, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
+
+    def plot_outgoing_average_weight_distribution(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of average synaptic weights of outgoing links."""
         print('Drawing graph: distribution of average synaptic weights of outgoing links')
-        avg_w_out = self.average_synaptic_weights_of_outgoing_links()
-        if len(plot_node) != 0: avg_w_out = avg_w_out[plot_node]
-        avg_w_out = avg_w_out[avg_w_out != None] # Remove neuron nodes with no outgoing links
-        if mpl_ax == None:
-            return self._plot_distribution(avg_w_out, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           figsize, dpi, '|s_out| distribution', '|s_out|',
-                                           'Distribution of average synaptic weights of outgoing links | bin size: {}'.format(bin_size),
-                                           xlim, (0, None), show_norm, x_logscale, y_logscale,
-                                           remove_zero_density, 'plot_dist_s_out',
-                                           file_label, file_type)
-        else:
-            return self._plot_distribution(avg_w_out, bin_size, c, m, ls, pt, ms, mfc, lw,
-                                           x_logscale=x_logscale, y_logscale=y_logscale,
-                                           show_norm=show_norm, remove_zero_density=remove_zero_density,
-                                           plot_label=plot_label, mpl_ax=mpl_ax)
+        avg_w_out = self.average_synaptic_weights_of_outgoing_links('all')
+        if len(specific_neurons) != 0: avg_w_out = avg_w_out[specific_neurons]
+
+        _xlabel = r'Average synaptic weight of outgoing links s$_{out}$'
+        _filename = 'Distribution of average synaptic weights of outgoing link'
+
+        self._graph_distribution_subroutine(avg_w_out, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
     def plot_links_of_network(self, link_type: str, threshold=0.5, figsize=(9, 9), dpi=150,
                               file_name='strongest_network_links', file_type=['svg','png']):
@@ -1852,7 +1459,7 @@ class NeuralNetwork:
         """
 
         def set_background_with_node_type(node_amt, row_size):
-            node_type = self.classify_node_type(self.adjacency_matrix)
+            node_type = self.classify_node_type(self.synaptic_weight_matrix)
             node_count = 0
             for i in range(row_size):
                 for j in range(row_size):
@@ -1866,7 +1473,7 @@ class NeuralNetwork:
             ax.plot([i%row_size+1, j%row_size+1], [int(i/row_size)+1, int(j/row_size)+1], color+'-', lw=0.7)
 
         print('Drawing graph: strongest links in network')
-        node_amt = np.shape(self.adjacency_matrix)[0]
+        node_amt = np.shape(self.synaptic_weight_matrix)[0]
         row_size = round(math.sqrt(node_amt))
 
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
@@ -1877,9 +1484,9 @@ class NeuralNetwork:
         neg_threshold = pct#mean + 1.5 * sd
         for i in range(node_amt):
             for j in range(node_amt):
-                if self.adjacency_matrix[i][j] < neg_threshold:
+                if self.synaptic_weight_matrix[i][j] < neg_threshold:
                     if link_type in ['inh', 'all']: join_two_points(i, j, row_size, 'b')
-                elif self.adjacency_matrix[i][j] > pos_threshold:
+                elif self.synaptic_weight_matrix[i][j] > pos_threshold:
                     if link_type in ['exc', 'all']: join_two_points(i, j, row_size, 'r')
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
@@ -1888,10 +1495,10 @@ class NeuralNetwork:
         for ext in file_type: fig.savefig(os.path.join(self.output_path, file_name+'.'+ext))
 
     def revert_modifications(self):
-        self.adjacency_matrix = self._unmodified_adjmat.copy()
+        self.synaptic_weight_matrix = self._unmodified_adjmat.copy()
         self.isAdjMatModified = False
 
-    def suppression_to_inhibition(self, k: float)->np.ndarray:
+    def suppression_to_inhibition(self, k: float) -> np.ndarray:
         """Suppress inhibition of the network.
         
         Replace the negative synaptic weights wij- by ( wij- + k * sigma_inh ).
@@ -1910,20 +1517,20 @@ class NeuralNetwork:
         np.ndarray
             adjacency matrix of the suppressed network
         """
-        if not self.isAdjMatModified: self._unmodified_adjmat = self.adjacency_matrix.copy()
+        if not self.isAdjMatModified: self._unmodified_adjmat = self.synaptic_weight_matrix.copy()
         self.isAdjMatModified = True
-        self.adjacency_matrix = self._unmodified_adjmat.copy()
+        self.synaptic_weight_matrix = self._unmodified_adjmat.copy()
         sigma_inh = self.statistics_of_synaptic_weights('inh')[1]
         for i in range(self.number_of_neurons):
             for j in range(self.number_of_neurons):
-                if self.adjacency_matrix[i][j] < 0:
-                    self.adjacency_matrix[i][j] += k * sigma_inh
-                    if self.adjacency_matrix[i][j] > 0:
-                        self.adjacency_matrix[i][j] = 0
-        return self.adjacency_matrix
+                if self.synaptic_weight_matrix[i][j] < 0:
+                    self.synaptic_weight_matrix[i][j] += k * sigma_inh
+                    if self.synaptic_weight_matrix[i][j] > 0:
+                        self.synaptic_weight_matrix[i][j] = 0
+        return self.synaptic_weight_matrix
 
 
-class NeuralDynamics:
+class NeuralDynamics(Tool):
 
     def __init__(self, input_folder=None, output_folder=None, **options):
         """A tool for analyzing neural dynamics.
@@ -1931,14 +1538,21 @@ class NeuralDynamics:
         Parameters
         ----------
         input_folder : str, optional
-            path of input folder, by default local folder
+            full or relative path of the input folder, by default local folder\n
         output_folder : str, optional
-            path of output folder, by default local folder
+            full or relative path of the output folder, by default local folder\n
 
         Raises
         ------
+        FileNotFoundError
+            invalid os path for input or output files\n
+        IndexError
+            neuron index out of bound\n
         TypeError
-            invalid argument type of `configuration`
+            invalid argument type for `configuration`\n
+            invalid argument type for `neural_dynamics_original`\n
+        ValueError
+            invalid value for object of `neural_dynamics_original`\n
         """
 
         configuration = 'cont.dat'
@@ -1961,30 +1575,14 @@ class NeuralDynamics:
         elif type(configuration) == str:
             self._spike_count, self._spike_times, self._config = self._init_spiking_data_from_file(spiking_data_file, configuration, delimiter, input_path)
         else:
-            err = 'the input argument \"config\" must either be a list of [N, dt, T] or a string storing the path to a local file.'
+            err = 'the input argument \"config\" must either be a list of [N, dt, T] or a string storing the path to a local file'
             raise TypeError(err)
         self._membrane_potential_timeseries_file = os.path.join(input_path, membrane_potential_timeseries_file)
         self._recovery_variable_timeseries_file = os.path.join(input_path, recovery_variable_timeseries_file)
         self._synaptic_current_timeseries_file = os.path.join(input_path, synaptic_current_timeseries_file)
         if input_folder == '': input_folder = 'current directory'
-        print('Spiking data imported from a local file: \"{}\" in \"{}\".'.format(spiking_data_file, input_folder))
-    
-    def __del__(self): pass
-
-    def _init_input_output_path(self, input_folder: str, output_folder: str) -> tuple:
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        index = this_dir.rfind('\\')
-        if input_folder != None:
-            if ':' in input_folder: input_path = input_folder
-            else: input_path = os.path.join(this_dir[:index], input_folder)
-        else: input_path = ''
-        if output_folder != None:
-            if ':' in output_folder: output_path = output_folder
-            else: output_path = os.path.join(this_dir[:index], output_folder)
-            try: os.mkdir(output_path)
-            except FileExistsError: pass
-        else: output_path = ''
-        return input_path, output_path
+        print('Spiking data imported from a local file: \"{}\" in \"{}\"'.format(spiking_data_file, input_folder))
+        self._mode = 'NeuralDynamics'
 
     def _init_spiking_data_from_file(self, spiking_data_file: str, configuration, delimiter: str, input_path: str) -> tuple:
         if type(configuration) == list:
@@ -2001,7 +1599,7 @@ class NeuralDynamics:
                 config[2] = float(config[2]) # config[2] = T
                 matrix_size = int(config[0])
             except FileNotFoundError:
-                err = 'configuration file \"{}\" cannot be found.'.format(os.path.join(input_path, configuration))
+                err = 'configuration file \"{}\" cannot be found'.format(os.path.join(input_path, configuration))
                 raise FileNotFoundError(err)
         try:
             with open(os.path.join(input_path, spiking_data_file), 'r') as fp:
@@ -2015,7 +1613,7 @@ class NeuralDynamics:
                     spike_count[counter] = int(row[0])
                     counter += 1
         except FileNotFoundError:
-            err = 'spiking data file \"{}\" cannot be found.'.format(os.path.join(input_path, spiking_data_file))
+            err = 'spiking data file \"{}\" cannot be found'.format(os.path.join(input_path, spiking_data_file))
             raise FileNotFoundError(err)
         return spike_count, spike_times, config
 
@@ -2035,7 +1633,9 @@ class NeuralDynamics:
         firing_rate_orig = self._init_firing_rate(spike_count_orig, config_orig, _custom=True)
         firing_rate = self._init_firing_rate()
         if specific_neurons == []: return firing_rate - firing_rate_orig
-        else: return firing_rate[specific_neurons] - firing_rate_orig[specific_neurons]
+        else:
+            specific_neurons = [x-1 for x in specific_neurons]
+            return firing_rate[specific_neurons] - firing_rate_orig[specific_neurons]
 
     def _init_interspike_interval(self, specific_neurons=[]) -> np.ndarray:
         if specific_neurons == []:
@@ -2045,6 +1645,7 @@ class NeuralDynamics:
                 except ValueError: interspike_interval[neuron] = np.diff(np.array([0]))
         else:
             count = 0
+            specific_neurons = [x-1 for x in specific_neurons]
             interspike_interval = np.empty(len(specific_neurons), dtype=object)
             for neuron in range(self._config[0]):
                 if neuron in specific_neurons:
@@ -2096,6 +1697,16 @@ class NeuralDynamics:
             raise FileNotFoundError(err)
         return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
 
+    def spike_counts(self) -> np.ndarray:
+        """Return the spike counts of each neuron in the network.
+
+        Returns
+        -------
+        numpy.ndarray
+            the i-th array element coressponds to the spike counts of neuron i
+        """
+        return self._spike_count
+
     def firing_rates(self) -> np.ndarray:
         """Return the firing rate of each neuron in the network.
 
@@ -2131,13 +1742,15 @@ class NeuralDynamics:
         """
         return self._init_interspike_interval()
 
-    def plot_firing_rate_distribution(self, binsize: float, style=None, scale=None, graph=None, **options):
-        """Plot a firing rate distribution plot.
+    def plot_firing_rate_distribution(self, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of firing rates.
 
         Parameters
         ----------
         binsize : float
             bin size
+        specific_neurons : list, optional
+            neurons to be considered, index starts from 1, by default `[]`
         style : dict, optional
             style of the plot, e.g., color, line weight, etc., by default `None`
         scale : dict, optional
@@ -2159,47 +1772,16 @@ class NeuralDynamics:
             index of sub-plot to be drawn into, by default `0`
         """
         print('Drawing graph: distribution of firing rates')
-        firing_rates = self._init_firing_rate()
-        min_firing_rate = np.amin(firing_rates)
-        max_firing_rate = np.amax(firing_rates)
+        firing_rate = self._init_firing_rate()
+        if len(specific_neurons) != 0: firing_rate = firing_rate[[x-1 for x in specific_neurons]]
 
-        textbox = 'default'
-        fitgaussian = 'none'
-        fileextension = 'png'
-        subplotindex = 0
-        for key, value in options.items():
-            if key == 'textbox': textbox = value
-            elif key == 'fitgaussian': fitgaussian = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        _xlabel = 'Firing rate (Hz)'
+        _filename = 'Distribution of firing rates'
 
-        if graph == None:
-            graph = GraphDensityDistribution()
-            graph.create_plot(figsize=(9,7))
-            graph.add_data(firing_rates, binsize)
+        self._graph_distribution_subroutine(firing_rate, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
-            if fitgaussian != 'none':
-                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
-                else: graph.fit_gaussian(0)
-            if textbox == 'default':
-                textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
-                        float(self._config[1]), float(min_firing_rate), float(max_firing_rate), float(binsize))
-                graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density'))
-            else: graph.label_plot(dict(xlabel='Firing rate (Hz)', ylabel='Probability density', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            if scale != None: graph.set_scale(scale)
-            graph.make_plot()
-            graph.save_plot('Firing rate distribution', ext=fileextension, path=self._output_path)
-            graph.save_plot_info('firing_rate', path=self._output_path)
-        else:
-            if style != None: graph.stylize_plot(style)
-            graph.add_data(firing_rates, binsize)
-            graph.make_plot(subplotindex)
-
-    def plot_firing_rate_change_distribution(self, neural_dynamics_original: object, binsize: float, style=None, scale=None, graph=None, **options):
-        """Plot a firing rate change distribution plot.
+    def plot_firing_rate_change_distribution(self, neural_dynamics_original: object, binsize: float, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
+        """Plot the distribution of changes in firing rate.
 
         Parameters
         ----------
@@ -2207,6 +1789,8 @@ class NeuralDynamics:
             object of original neural dynamics
         binsize : float
             bin size
+        specific_neurons : list, optional
+            neurons to be considered, index starts from 1, by default `[]`
         style : dict, optional
             style of the plot, e.g., color, line weight, etc., by default `None`
         scale : dict, optional
@@ -2228,47 +1812,15 @@ class NeuralDynamics:
             index of sub-plot to be drawn into, by default `0`
         """
         print('Drawing graph: distribution of changes in firing rate')
-        chaanges_in_firing_rate = self._init_firing_rate_change(neural_dynamics_original)
-        min_firing_rate = np.amin(chaanges_in_firing_rate)
-        max_firing_rate = np.amax(chaanges_in_firing_rate)
+        firing_rate_chg = self._init_firing_rate_change(neural_dynamics_original, specific_neurons)
 
-        textbox = 'default'
-        fitgaussian = 'none'
-        fileextension = 'png'
-        subplotindex = 0
-        for key, value in options.items():
-            if key == 'textbox': textbox = value
-            elif key == 'fitgaussian': fitgaussian = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        _xlabel = 'Change in firing rate (Hz)'
+        _filename = 'Distribution of changes in firing rate'
 
-        if graph == None:
-            graph = GraphDensityDistribution()
-            graph.create_plot(figsize=(9,7))
-            graph.add_data(chaanges_in_firing_rate, binsize)
-
-            if fitgaussian != 'none':
-                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
-                else: graph.fit_gaussian(0)
-            if textbox == 'default':
-                textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} Hz | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
-                        float(self._config[1]), float(min_firing_rate), float(max_firing_rate), float(binsize))
-                graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density'))
-            else: graph.label_plot(dict(xlabel='Change in firing rate (Hz)', ylabel='Probability density', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            if scale != None: graph.set_scale(scale)
-            graph.make_plot()
-            graph.save_plot('Change in firing rate distribution', ext=fileextension, path=self._output_path)
-            graph.save_plot_info('firing_rate_change', path=self._output_path)
-        else:
-            if style != None: graph.stylize_plot(style)
-            graph.add_data(chaanges_in_firing_rate, binsize)
-            graph.make_plot(subplotindex)
+        self._graph_distribution_subroutine(firing_rate_chg, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
     def plot_interspike_interval_distribution(self, binsize: float, xlogscale=True, specific_neurons=[], style=None, label=None, scale=None, graph=None, **options):
-        """Plot an inter-spike intervals distribution plot.
+        """Plot the distribution of inter-spike intervals (ISI).
 
         Parameters
         ----------
@@ -2277,7 +1829,7 @@ class NeuralDynamics:
         xlogscale : bool, optional
             log scale in x-axis, by default `True`
         specific_neurons : list, optional
-            neurons, by default `[]`
+            neurons to be considered, index starts from 1, by default `[]`
         style : dict, optional
             style of the plot, e.g., color, line weight, etc., by default `None`
         label : dict, optional
@@ -2301,62 +1853,12 @@ class NeuralDynamics:
             index of sub-plot to be drawn into, by default `0`
         """
         print('Drawing graph: distribution of inter-spike intervals (ISI)')
-        if len(specific_neurons) != 0: specific_neurons += 1
-        interspike_intervals = self._init_interspike_interval(specific_neurons)
-        if interspike_intervals.size != 0:
-            min_interspike_interval = np.amin(interspike_intervals)
-            max_interspike_interval = np.amax(interspike_intervals)
-        else:
-            min_interspike_interval, max_interspike_interval = None, None
+        interspike_interval = self._init_interspike_interval(specific_neurons)
 
-        density = True
-        histogram = False
-        textbox = 'default'
-        fitgaussian = 'none'
-        fileextension = 'png'
-        subplotindex = 0
-        for key, value in options.items():
-            if key == 'density': density = value
-            elif key == 'histogram': histogram = value
-            elif key == 'textbox': textbox = value
-            elif key == 'fitgaussian': fitgaussian = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
-        if histogram: density = False
+        _xlabel = 'Inter-spike intervals ISI (s)'
+        _filename = 'Distribution of inter-spike intervals'
 
-        if graph == None:
-            if density: graph = GraphDensityDistribution()
-            else: graph = GraphHistogramDistribution()
-            graph.create_plot(figsize=(9,7))
-            graph.add_data(interspike_intervals, binsize, logdata=xlogscale)
-
-            if fitgaussian != 'none':
-                if type(fitgaussian) == tuple: graph.fit_gaussian(0, c=fitgaussian[0], lw=fitgaussian[1])
-                else: graph.fit_gaussian(0)
-            if textbox == 'default':
-                if xlogscale:
-                    textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} s | max: {:.3} | bin size (log): {:.5}'.format(float(self._config[2]),
-                            float(self._config[1]), float(min_interspike_interval), float(max_interspike_interval), float(binsize))
-                else:
-                    textbox = 'T: {:.7} ms | dt: {:.5} | min: {:.3} s | max: {:.3} | bin size: {:.5}'.format(float(self._config[2]),
-                            float(self._config[1]), float(min_interspike_interval), float(max_interspike_interval), float(binsize))
-                graph.label_plot(dict(xlabel='Inter-spike interval (Hz)', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Inter-spike interval (Hz)'))
-            else: graph.label_plot(dict(xlabel='Inter-spike interval (Hz)', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            if label != None: graph.label_plot(label)
-            graph.set_scale(dict(xlogscale=True))
-            if scale != None: graph.set_scale(scale)
-            graph.make_plot()
-            graph.save_plot('Inter-spike interval distribution', ext=fileextension, path=self._output_path)
-            graph.save_plot_info('interspike_interval', path=self._output_path)
-        else:
-            graph.set_scale(dict(grid=True, xlogscale=True))
-            if style != None: graph.stylize_plot(style)
-            if label != None: graph.label_plot(label)
-            graph.add_data(interspike_intervals, binsize, logdata=xlogscale)
-            graph.make_plot(subplotindex)
+        self._graph_distribution_subroutine(interspike_interval, binsize, style, label, scale, graph, xlogscale=xlogscale, _xlabel=_xlabel, _filename=_filename, **options)
 
     def plot_spike_raster(self, trim=(None, None), graph=None, **options):
         """Plot a spike raster plot.
@@ -2431,95 +1933,136 @@ class NeuralDynamics:
             # ax.grid(True, which='major')
             ax.grid(False)
 
-    def plot_membrane_potential_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+    def plot_membrane_potential_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: membrane potential time series of neuron-{}'.format(neuron_index))
         voltage, time = self._init_membrane_potential(neuron_index)
 
         textbox = 'default'
         filelabel = ''
         fileextension = 'png'
+        subplotindex = None
         for key, value in options.items():
             if key == 'textbox': textbox = value
             elif key == 'filelabel': filelabel = value
             elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-        g = GraphDataRelation()
-        g.create_plot(figsize=(14,7))
-        g.add_data(time, voltage)
+        if graph == None:
+            graph = GraphDataRelation()
+            graph.create_plot(figsize=(14,7))
+            graph.add_data(time, voltage)
 
-        if textbox == 'default':
-            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                int(neuron_index), float(self._config[2]), float(self._config[1]))
-            g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
-        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)'))
-        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
-        if style != None: g.stylize_plot(style)
-        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
-        if scale != None: g.set_scale(scale)
-        if trim != (None, None): g.set_scale(xlim=trim)
-        g.make_plot()
-        g.save_plot('Membrane potential of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-        g.save_plot_info('membrane_potential_neuron_{}'.format(neuron_index), path=self._output_path)
+            if textbox == 'default':
+                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                    int(neuron_index), float(self._config[2]), float(self._config[1]))
+                graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)'))
+            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            if scale != None: graph.set_scale(scale)
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            graph.make_plot()
+            graph.save_plot('Membrane potential of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+            graph.save_plot_info('membrane_potential_neuron_{}'.format(neuron_index), path=self._output_path)
+        else:
+            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            graph.set_scale(dict(grid=True))
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(time, voltage)
+            graph.make_plot(subplotindex)
 
-    def plot_recovery_variable_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+    def plot_recovery_variable_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: recovery variable time series of neuron-{}'.format(neuron_index))
         recovery, time = self._init_recovery_variable(neuron_index)
 
         textbox = 'default'
         filelabel = ''
         fileextension = 'png'
+        subplotindex = None
         for key, value in options.items():
             if key == 'textbox': textbox = value
             elif key == 'filelabel': filelabel = value
             elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-        g = GraphDataRelation()
-        g.create_plot(figsize=(14,7))
-        g.add_data(time, recovery)
+        if graph == None:
+            graph = GraphDataRelation()
+            graph.create_plot(figsize=(14,7))
+            graph.add_data(time, recovery)
 
-        if textbox == 'default':
-            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                int(neuron_index), float(self._config[2]), float(self._config[1]))
-            g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
-        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)'))
-        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
-        if style != None: g.stylize_plot(style)
-        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
-        if scale != None: g.set_scale(scale)
-        if trim != (None, None): g.set_scale(xlim=trim)
-        g.make_plot()
-        g.save_plot('Recovery variable of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-        g.save_plot_info('recovery_variable_neuron_{}'.format(neuron_index), path=self._output_path)
+            if textbox == 'default':
+                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                    int(neuron_index), float(self._config[2]), float(self._config[1]))
+                graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)'))
+            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            if scale != None: graph.set_scale(scale)
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            graph.make_plot()
+            graph.save_plot('Recovery variable of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+            graph.save_plot_info('recovery_variable_neuron_{}'.format(neuron_index), path=self._output_path)
+        else:
+            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            graph.set_scale(dict(grid=True))
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(time, recovery)
+            graph.make_plot(subplotindex)
 
-    def plot_synaptic_current_time_series(self, neuron_index, trim=(None, None), style=None, scale=None, **options):
+    def plot_synaptic_current_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: current time series of neuron-{}'.format(neuron_index))
         current, time = self._init_synaptic_current(neuron_index)
 
         textbox = 'default'
         filelabel = ''
         fileextension = 'png'
+        subplotindex = None
         for key, value in options.items():
             if key == 'textbox': textbox = value
             elif key == 'filelabel': filelabel = value
             elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
 
-        g = GraphDataRelation()
-        g.create_plot(figsize=(14,7))
-        g.add_data(time, current)
+        if graph == None:
+            graph = GraphDataRelation()
+            graph.create_plot(figsize=(14,7))
+            graph.add_data(time, current)
 
-        if textbox == 'default':
-            textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                int(neuron_index), float(self._config[2]), float(self._config[1]))
-            g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
-        elif textbox == 'none': g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)'))
-        else: g.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
-        if style != None: g.stylize_plot(style)
-        else: g.stylize_plot(dict(ls='-', lw=1, ms=0))
-        if scale != None: g.set_scale(scale)
-        if trim != (None, None): g.set_scale(xlim=trim)
-        g.make_plot()
-        g.save_plot('Current of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-        g.save_plot_info('current_neuron_{}'.format(neuron_index), path=self._output_path)
+            if textbox == 'default':
+                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                    int(neuron_index), float(self._config[2]), float(self._config[1]))
+                graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
+            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)'))
+            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            if scale != None: graph.set_scale(scale)
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            graph.make_plot()
+            graph.save_plot('Current of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
+            graph.save_plot_info('current_neuron_{}'.format(neuron_index), path=self._output_path)
+        else:
+            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            graph.set_scale(dict(grid=True))
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(time, current)
+            graph.make_plot(subplotindex)
 
 
 # Other tools
@@ -2611,7 +2154,7 @@ def plot_distribution(data, bin_size=0.15, color='b', marker_style='^', line_sty
 def plot_mean_of_average_synaptic_weights_vs_spike_count(network: object, dynamics: object,
                         in_or_out: str, inh_or_exc: str, bins=16, mpl_ax=None, color='b', marker='^',
                         marker_fill=True, marker_size=8, line_style='', line_width=2,
-                        xlim=(None, None), ylim=(0, 0.03), plot_label='',
+                        xlim=(None, None), ylim=(None, None), plot_label='',
                         return_bin_info=False, return_plot_data=False, custom_bins=[]):
     """Plot the dependence of mean values of average synaptic weights on the number of spikes.
     
@@ -2631,24 +2174,6 @@ def plot_mean_of_average_synaptic_weights_vs_spike_count(network: object, dynami
         number of bins, the resulting number of bins may be smaller due to duplicated bin values, by default 16
     mpl_ax : matplotlib.axes.Axes, optional
         if a matplotlib Axes is given, append the plot to the Axes, by default None
-    color : str, optional
-        color of lines and markers, by default 'b'
-    marker : str, optional
-        type of marker, by default '^'
-    marker_fill : bool, optional
-        marker face fill, solid markers if True, open markers if False, by default True
-    marker_size : int, optional
-        size of marker, by default 8
-    line_style : str, optional
-        style of line, by default ''
-    line_width : int, optional
-        line weight, by default 2
-    xlim : tuple, optional
-        range of x-axis, by default (None, None)
-    ylim : tuple, optional
-        range of y-axis, by default (0, 0.03)
-    plot_label : str, optional
-        label of the plot to be shown in legend, by default ''
     return_bin_info : bool, optional
         also return the details on bin size, number of data in each bin, etc. if enabled, by default False
     return_plot_data : bool, optional
@@ -2670,7 +2195,7 @@ def plot_mean_of_average_synaptic_weights_vs_spike_count(network: object, dynami
     print_info = False
     save_info = False
 
-    spike_count = dynamics.spike_count
+    spike_count = dynamics.spike_counts()
     if in_or_out == 'in': s_in_out = network.average_synaptic_weights_of_incoming_links(inh_or_exc)
     elif in_or_out == 'out': s_in_out = network.average_synaptic_weights_of_outgoing_links(inh_or_exc)
     s_in_out = np.array([x if x != None else 0 for x in s_in_out]) # If a neuron has no outgoing/incoming links, assign 0
@@ -2805,14 +2330,14 @@ def fread_sparse_matrix(filename: str, delim=' ', start_idx=1)->np.ndarray:
     try:
         with open(filename, 'r', newline='') as fp:
             content = list(csv.reader(fp, delimiter=delim))
-            A_size = int(content[0])
-            for i in range(len(content)):
-                content[i+1] = remove_all_occurrences('', content[i+1])
-                content[i+1][0] = int(content[i+1][0])-start_idx # j
-                content[i+1][1] = int(content[i+1][1])-start_idx # i
-                content[i+1][2] = float(content[i+1][2]) # w_ij
-            matrix = np.zeros((A_size[0], A_size[1]))
-            for item in content: matrix[item[1]][item[0]] = item[2]
+            A_size = int(content[0][0])
+            for i in range(1, len(content)):
+                content[i] = remove_all_occurrences('', content[i])
+                content[i][0] = int(content[i][0])-start_idx # j
+                content[i][1] = int(content[i][1])-start_idx # i
+                content[i][2] = float(content[i][2]) # w_ij
+            matrix = np.zeros((A_size, A_size))
+            for item in content[1:]: matrix[item[1]][item[0]] = item[2]
             return np.array(matrix).astype(float)
     except FileNotFoundError:
         err = 'matrix file "{}" cannot be found'.format(filename)
@@ -2903,7 +2428,7 @@ def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1, dtype=f
     """
     try:
         with open(filename, 'w') as fp:
-            fp.write(len(A))
+            fp.write(str(len(A)))
             if dtype == int:
                 for i in range(len(A)):
                     for j in range(len(A[i])):
@@ -2953,49 +2478,110 @@ def remove_all_occurrences(x, a: list)->list:
     """Remove all occurences of an element from a list or string."""
     return list(filter((x).__ne__, a))
 
+round_to_n = lambda x, n: x if x == 0 else round(x, -int(math.floor(math.log10(abs(x)))) + (n - 1))
+"""Round x to n sigificant figures"""
+
 
 # Help
 def ask_for_help():
-    """Evoke this function to show help and advanced instructions.
-    """
+    """Evoke this function to show help and advanced instructions."""
     print('\n  HOW TO FORMAT PLOTS AND GRAPHS')
     print('  ==============================')
     print(help_graph_formatting.__doc__)
 
 def help_graph_formatting():
     """
-    Below shows additional parameters for graphing functions.
+    Below shows all optional parameters for the graphing tool.
 
-    Note that not all functions take every parameter.
 
-    Parameters
-    ----------
-    color : str, optional
-        color of lines and markers, by default 'b'
-    marker : str, optional
-        type of marker, usually by default '^'
-    marker_fill : bool, optional
-        marker face fill, solid markers if True, open markers if False, usually by default True
-    marker_size : int, optional
-        size of marker, usually by default 8
-    line_style : str, optional
-        style of line, by default ''
-    line_width : int, optional
-        line weight, by usually default 2
-    xlim : tuple, optional
-        range of x-axis
-    ylim : tuple, optional
-        range of y-axis
-    plot_label : str, optional
-        label of the plot to be shown in legend, usually by default ''
-    return_bin_info : bool, optional
-        also return the details on bin size, number of data in each bin, etc. if enabled, usually by default False
-    return_plot_data : bool, optional
-        also return the data points of the plot if enabled, usually by default False
-    mpl_ax : matplotlib.axes.Axes, optional
-        if a matplotlib Axes is given, append the plot to the Axes, usually by default None
-    custom_bins : list, optional
-        customized bin edges, override `bins` if used, by default []
+    stylize_plot()
+    --------------
+    color | c : str
+        color of markers and lines, e.g., `'b', 'C1', 'darkorange'`\n
+    marker | m : str
+        marker style, e.g., `'o', '^', 'D', ','`\n
+    markersize | ms : float
+        marker size\n
+    markerfacecolor | mfc : str
+        marker face color, default: same as `color`
+    markerfilled | mf : bool
+        solid marker or hollow marker, default `True`
+    linestyle | ls : str
+        line style, e.g., `'-', '--', '-.', ':'`\n
+    lineweight | lw : float
+        line weight\n
+
+    label_plot()
+    ------------
+    title : str
+        figure title\n
+    plotlabel : str
+        plot label to be displayed in legend\n
+    axislabel : list of str
+        x-axis and y-axis labels, e.g., `['time', 'voltage']`\n
+    xlabel : str
+        x-axis label\n
+    ylabel : str
+        y-axis label\n
+    xlabelnplot : list of int | int
+        show y-axis label in selected subplots, otherwise disable\n
+    ylabelnplot : list of int | int
+        show y-axis label in selected subplots, otherwise disable\n
+    legend : bool | list
+        - bool: legend on/off, default `False`
+        - list: list of plotlabels (for single plot)
+        - list: `[(subplotindex, plotlabels ...), ...]` (for subplots)\n
+    legendcombine : bool
+        combine legends if there are multiple subplots, default `False`\n
+    textbox : str | list
+        information to be displayed at top-left corner
+        - list: `[(subplotindex, text ...), ...]` (for subplots)\n
+
+    set_scale()
+    -----------
+    nplot : int
+        set the scale of the n-th sub-plot if there are multiple subplots\n
+    grid : bool
+        grid on/off, default `True`\n
+    gridnplot : list of int
+        the indexes of subplot whose grid is on, default: all grids on\n
+    minortick : bool
+        minortick on/off, default: `True`\n
+    xlim : tuple
+        horizontal plot range, default: fitted to data\n
+    ylim : tuple
+        vertical plot range, default: fitted to data\n
+    xlogscale : bool
+        use log scale in x-axis, default `False`\n
+    ylogscale : bool
+        use log scale in y-axis, default `False`\n
+    xsymlogscale : bool
+        use symmetric log scale in x-axis (should be used with `xlinthresh`), default `False`\n
+    xlinthresh : float
+        the threshold of linear range when using `xsymlogscale`, default `1`\n
+    ysymlogscale : bool
+        use symmetric log scale in y-axis (should be used with `ylinthresh`), default `False`\n
+    ylinthresh : float
+        the threshold of linear range when using `ysymlogscale`, default `1`\n
+
+    other arguments
+    ---------------
+    fitgaussian : bool
+        fit the data with a Gaussian curve, by default `False`\n
+    filelabel : str
+        label attached at the end of the file name, by default `''`\n
+    fileextension : str
+        file extension, by default `'png'`\n
+    subplotindex : int
+        index of sub-plot to be drawn into, by default `0`\n
+    saveplotinfo : bool
+        return 1: the data points; 2: the details on bin size, number of data in each bin, etc., default `False`\n
+    density : bool
+        use probability density instead of histogram, default `True`\n
+    histogram : bool
+        use histogram instead of probability density, default `False`\n
+    normalize_to_factor : float
+        for probability density graphs, normalize the area under graph to a factor, default `1`\n
     """
     print('\n  HOW TO FORMAT PLOTS AND GRAPHS')
     print('  ==============================')
