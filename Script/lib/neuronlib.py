@@ -1532,7 +1532,7 @@ class NeuralNetwork(Tool):
         if len(specific_neurons) != 0: avg_w_inc = avg_w_inc[specific_neurons]
 
         _xlabel = r'Average synaptic weight of incoming links s$_{in}$'
-        _filename = 'Distribution of average synaptic weights of incoming link'
+        _filename = 'Distribution of average synaptic weights of incoming links'
 
         self._graph_distribution_subroutine(avg_w_inc, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
@@ -1543,7 +1543,7 @@ class NeuralNetwork(Tool):
         if len(specific_neurons) != 0: avg_w_out = avg_w_out[specific_neurons]
 
         _xlabel = r'Average synaptic weight of outgoing links s$_{out}$'
-        _filename = 'Distribution of average synaptic weights of outgoing link'
+        _filename = 'Distribution of average synaptic weights of outgoing links'
 
         self._graph_distribution_subroutine(avg_w_out, binsize, style, label, scale, graph, _xlabel=_xlabel, _filename=_filename, **options)
 
