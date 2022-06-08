@@ -26,11 +26,11 @@ to view all instructions such as additional arguments for graph plotting.
 
 ----------
 
-Version: alpha02
-Last update: 02 June 2022
+Version: alpha03
+Last update: 08 June 2022
 
 In progress:
-- updating class "NeuralNetwork"
+-
 
 """
 
@@ -39,11 +39,11 @@ import os
 import csv
 import math
 import numpy as np
+from decimal import Decimal
 import matplotlib as mpl
 from scipy import linalg, stats
 from matplotlib import pyplot as plt, collections as mcol, ticker as tck, patches
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from torch import float16
 from lib.cppvector import Vector_fl
 
 
@@ -92,6 +92,7 @@ class Grapher:
         self._legendnplot  = None
         self._legendcomb   = False
         self._textbox      = ''
+        self._textboxypad  = .05
 
         self._binsize      = None
 
@@ -436,7 +437,7 @@ class Grapher:
             self.ax.set(xlabel=self._axislabel[0], ylabel=self._axislabel[1])
             if self._textbox != '':
                 props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
-                self.ax.text(0.00001, 1.07, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                self.ax.text(0.00001, 1.0+self._textboxypad, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
                              verticalalignment='top', transform=self.ax.transAxes, bbox=props)
         elif len(self.axes) != 0:
             if self._textbox == '': _titlepad = 15
@@ -446,12 +447,12 @@ class Grapher:
                 if type(self._textbox) == str:
                     for n in range((self.axes)):
                         props = dict(boxstyle='round', pad=0.08, facecolor='white', edgecolor='none', alpha=0.75)
-                        self.axes[n].text(0.00001, 1.09, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                        self.axes[n].text(0.00001, 1.0+self._textboxypad, self._textbox, fontsize=font_settings['size']*textbox_fontsize_multiplier,
                                             verticalalignment='top', transform=self.axes[0].transAxes, bbox=props)
                 elif type(self._textbox) == list:
                     for tb in self._textbox:
                         props = dict(boxstyle='round', pad=0.08, facecolor='white', edgecolor='none', alpha=0.75)
-                        self.axes[tb[0]].text(0.00001, 1.09, tb[1], fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                        self.axes[tb[0]].text(0.00001, 1.0+self._textboxypad, tb[1], fontsize=font_settings['size']*textbox_fontsize_multiplier,
                                               verticalalignment='top', transform=self.axes[tb[0]].transAxes, bbox=props)
             for ax in self.axes:
                 if self._grid:
@@ -637,8 +638,8 @@ class GraphDataRelation(Grapher):
             raise ValueError(err)
 
     def draw_xyline(self, color='k'):
-        min_elem = min(np.amin(self._x), np.amin(self._y))
-        max_elem = max(np.amax(self._x), np.amax(self._y))
+        min_elem = min(np.amin(self._x[self._x != None]), np.amin(self._y[self._y != None]))
+        max_elem = max(np.amax(self._x[self._x != None]), np.amax(self._y[self._y != None]))
         elem_range = np.linspace(min_elem, max_elem)
         self.ax.plot(elem_range, elem_range, c=color, ls='--', lw=1, zorder=1)
 
@@ -986,8 +987,116 @@ class Tool:
         else:
             if style != None: graph.stylize_plot(style)
             if label != None: graph.label_plot(label)
-            graph.add_data(data, binsize)
+            graph.add_data(data, binsize, logdata=xlogscale)
             graph.make_plot(subplotindex)
+
+    def _graph_timeseries_subroutine(self, timeseries: np.ndarray, neuron_index: int, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
+        time = np.arange(0, len(timeseries)) * self._config[1] / 1000 # total time steps * dt in seconds
+
+        _ylabel = 'timeseries'
+        _filename = 'Timeseries plot'
+        title = ''
+        textbox = 'default'
+        filelabel = ''
+        fileextension = 'png'
+        subplotindex = None
+        saveplotinfo = False
+        for key, value in options.items():
+            if key == '_ylabel': _ylabel = value
+            elif key == '_filename': _filename = value
+            elif key == 'title': title = value
+            elif key == 'textbox': textbox = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            elif key == 'saveplotinfo': saveplotinfo = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+
+        if graph == None:
+            graph = GraphDataRelation()
+            graph.create_plot(figsize=(14,7))
+            graph.add_data(time, timeseries)
+
+            graph.label_plot(dict(axislabel=['Time (s)', _ylabel], title=title))
+            if textbox == 'default':
+                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
+                    int(neuron_index), float(self._config[2]), float(self._config[1]))
+                graph.label_plot(dict(textbox=textbox))
+            elif textbox == 'none': pass
+            else: graph.label_plot(dict(textbox=textbox))
+            if style != None: graph.stylize_plot(style)
+            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            if scale != None: graph.set_scale(scale)
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            graph.make_plot()
+            graph.save_plot(_filename, label=filelabel, ext=fileextension, path=self._output_path)
+            if saveplotinfo: graph.save_plot_info(_filename, path=self._output_path)
+        else:
+            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
+            graph.set_scale(dict(grid=True))
+            if trim != (None, None): graph.set_scale(dict(xlim=trim))
+            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
+            if style != None: graph.stylize_plot(style)
+            if label != None: graph.label_plot(label)
+            graph.add_data(time, timeseries)
+            graph.make_plot(subplotindex)
+
+    def _graph_phasediagram_subroutine(self, xdata: np.ndarray, ydata: np.ndarray, neuron_index: int, trim=(None, None), label=None, graph=None, **options):
+        _axislabel = ['variable x', 'variable y']
+        _filename = 'Phase diagram'
+        cmap = 'copper'
+        title = ''
+        textbox = 'default'
+        filelabel = ''
+        fileextension = 'png'
+        subplotindex = None
+        saveplotinfo = False
+        for key, value in options.items():
+            if key == '_axislabel': _axislabel = value
+            elif key == '_filename': _filename = value
+            elif key == 'cmap': cmap = value
+            elif key == 'title': title = value
+            elif key == 'textbox': textbox = value
+            elif key == 'filelabel': filelabel = value
+            elif key == 'fileextension': fileextension = value
+            elif key == 'subplotindex': subplotindex = value
+            elif key == 'saveplotinfo': saveplotinfo = value
+            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+
+        if trim[0] == None: start_time = 0
+        else: start_time = trim[0]
+        if trim[1] == None: end_time = self._config[2]
+        else: end_time = trim[1]
+        begin = int(start_time*1000/self._config[1])
+        end = int(end_time*1000/self._config[1])
+
+        if not graph:
+            graph = GraphDataRelation()
+            graph.create_plot(figsize=(9,7))
+            ax = graph.ax
+            outputplot = True
+        elif subplotindex:
+            ax = graph.axes[subplotindex]
+        else: ax = graph.ax
+
+        lc = _colorline(xdata[begin:end], ydata[begin:end], cmap=cmap, linewidth=1, ax=ax)
+        cbar = plt.colorbar(lc)
+        cbar.ax.yaxis.set_major_locator(tck.FixedLocator(cbar.ax.get_yticks().tolist()))
+        cbar.ax.set_yticklabels(['{:f}'.format(Decimal('{}'.format(x)).normalize()) for x in np.arange(start_time, end_time+(end_time-start_time)/5, (end_time-start_time)/5)])
+        cbar.set_label('Time (s)', rotation=90, labelpad=15)
+        graph.ax.autoscale_view()
+
+        if outputplot:
+            graph.label_plot(dict(axislabel=_axislabel, title=title))
+            if textbox == 'default':
+                textbox = 'Neuron index: {:d} | dt: {:.5} ms'.format(int(neuron_index), float(self._config[1]))
+                graph.label_plot(dict(textbox=textbox))
+            elif textbox == 'none': pass
+            else: graph.label_plot(dict(textbox=textbox))
+            graph.save_plot(_filename, label=filelabel, ext=fileextension, path=self._output_path)
+            if saveplotinfo: graph.save_plot_info(_filename, path=self._output_path)
+        else:
+            if not label: graph.label_plot(label)
 
     def __del__(self): pass
 
@@ -1082,8 +1191,8 @@ class NeuralNetwork(Tool):
         with open(os.path.join(self._output_path, filepath), 'w') as fp:
             if matrix_format == 'nonzero':
                 fp.write(str(len(synaptic_weight_matrix)))
-                for i in range(len(synaptic_weight_matrix)):
-                    for j in range(len(synaptic_weight_matrix[i])):
+                for j in range(len(synaptic_weight_matrix)):
+                    for i in range(len(synaptic_weight_matrix)):
                         if synaptic_weight_matrix[i][j] != 0:
                             fp.write('\n{:d}{}{:d}{}{:.10f}'.format(j+1, delimiter, i+1, delimiter, synaptic_weight_matrix[i][j]))
             elif matrix_format == 'full':
@@ -1658,7 +1767,7 @@ class NeuralDynamics(Tool):
     def _init_membrane_potential(self, neuron_index: int, _membrane_potential_timeseries=None, _config=None, _custom=False) -> np.ndarray:
         if _custom == False: _membrane_potential_timeseries, _config = self._membrane_potential_timeseries_file, self._config
         neuron_index -= 1
-        if not 1 <= neuron_index <= self._config[0]:
+        if not 0 <= neuron_index <= self._config[0]-1:
             err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
             raise IndexError(err)
         time_series = Vector_fl()
@@ -1667,12 +1776,12 @@ class NeuralDynamics(Tool):
             err = 'time series of membrane potential \"{}\" cannot be found.'.format(
                   self._membrane_potential_timeseries_file)
             raise FileNotFoundError(err)
-        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
+        return np.array(time_series)
 
     def _init_recovery_variable(self, neuron_index: int, _recovery_variable_timeseries=None, _config=None, _custom=False) -> np.ndarray:
         if _custom == False: _recovery_variable_timeseries, _config = self._recovery_variable_timeseries_file, self._config
         neuron_index -= 1
-        if not 1 <= neuron_index <= self._config[0]:
+        if not 0 <= neuron_index <= self._config[0]-1:
             err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
             raise IndexError(err)
         time_series = Vector_fl()
@@ -1681,12 +1790,12 @@ class NeuralDynamics(Tool):
             err = 'time series of recovery variable \"{}\" cannot be found.'.format(
                   self._recovery_variable_timeseries_file)
             raise FileNotFoundError(err)
-        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
+        return np.array(time_series)
 
     def _init_synaptic_current(self, neuron_index: int, _synaptic_current_timeseries=None, _config=None, _custom=False) -> np.ndarray:
         if _custom == False: _synaptic_current_timeseries, _config = self._synaptic_current_timeseries_file, self._config
         neuron_index -= 1
-        if not 1 <= neuron_index <= self._config[0]:
+        if not 0 <= neuron_index <= self._config[0]-1:
             err = 'neuron index {:d} is out of bound, index starts from 1, ends in {:d}'.format(neuron_index+1, self._config[0])
             raise IndexError(err)
         time_series = Vector_fl()
@@ -1695,7 +1804,7 @@ class NeuralDynamics(Tool):
             err = 'time series of current \"{}\" cannot be found.'.format(
                   self._synaptic_current_timeseries_file)
             raise FileNotFoundError(err)
-        return np.array(time_series), np.arange(0, len(time_series)) * self._config[1] / 1000 # total time steps * dt in seconds
+        return np.array(time_series)
 
     def spike_counts(self) -> np.ndarray:
         """Return the spike counts of each neuron in the network.
@@ -1867,6 +1976,8 @@ class NeuralDynamics(Tool):
         ----------
         trim : tuple, optional
             the range of time to be plotted, by default `(None, None)`
+        graph : object of Grapher, optional
+            supply a Grapher object here for overlaying plots, by default `None`
         
         **options
         
@@ -1933,140 +2044,65 @@ class NeuralDynamics(Tool):
             # ax.grid(True, which='major')
             ax.grid(False)
 
-    def plot_membrane_potential_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
+    def plot_membrane_potential_time_series(self, neuron_index: int, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: membrane potential time series of neuron-{}'.format(neuron_index))
-        voltage, time = self._init_membrane_potential(neuron_index)
+        voltage = self._init_membrane_potential(neuron_index)
 
-        textbox = 'default'
-        filelabel = ''
-        fileextension = 'png'
-        subplotindex = None
-        for key, value in options.items():
-            if key == 'textbox': textbox = value
-            elif key == 'filelabel': filelabel = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        _ylabel = 'Membrane potential (mV)'
+        _filename = 'Membrane potential of neuron-{:d}'.format(neuron_index)
 
-        if graph == None:
-            graph = GraphDataRelation()
-            graph.create_plot(figsize=(14,7))
-            graph.add_data(time, voltage)
+        self._graph_timeseries_subroutine(voltage, neuron_index, trim, style, label, scale, graph, _ylabel=_ylabel, _filename=_filename, **options)
 
-            if textbox == 'default':
-                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                    int(neuron_index), float(self._config[2]), float(self._config[1]))
-                graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)'))
-            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Membrane potential (mV)', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            if scale != None: graph.set_scale(scale)
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
-            graph.make_plot()
-            graph.save_plot('Membrane potential of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-            graph.save_plot_info('membrane_potential_neuron_{}'.format(neuron_index), path=self._output_path)
-        else:
-            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            graph.set_scale(dict(grid=True))
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
-            if style != None: graph.stylize_plot(style)
-            if label != None: graph.label_plot(label)
-            graph.add_data(time, voltage)
-            graph.make_plot(subplotindex)
-
-    def plot_recovery_variable_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
+    def plot_recovery_variable_time_series(self, neuron_index: int, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: recovery variable time series of neuron-{}'.format(neuron_index))
-        recovery, time = self._init_recovery_variable(neuron_index)
+        recovery = self._init_recovery_variable(neuron_index)
 
-        textbox = 'default'
-        filelabel = ''
-        fileextension = 'png'
-        subplotindex = None
-        for key, value in options.items():
-            if key == 'textbox': textbox = value
-            elif key == 'filelabel': filelabel = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        _ylabel = 'Recovery variable'
+        _filename = 'Recovery variable of neuron-{:d}'.format(neuron_index)
 
-        if graph == None:
-            graph = GraphDataRelation()
-            graph.create_plot(figsize=(14,7))
-            graph.add_data(time, recovery)
+        self._graph_timeseries_subroutine(recovery, neuron_index, trim, style, label, scale, graph, _ylabel=_ylabel, _filename=_filename, **options)
 
-            if textbox == 'default':
-                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                    int(neuron_index), float(self._config[2]), float(self._config[1]))
-                graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)'))
-            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Recovery variable (mV)', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            if scale != None: graph.set_scale(scale)
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
-            graph.make_plot()
-            graph.save_plot('Recovery variable of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-            graph.save_plot_info('recovery_variable_neuron_{}'.format(neuron_index), path=self._output_path)
-        else:
-            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            graph.set_scale(dict(grid=True))
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
-            if style != None: graph.stylize_plot(style)
-            if label != None: graph.label_plot(label)
-            graph.add_data(time, recovery)
-            graph.make_plot(subplotindex)
-
-    def plot_synaptic_current_time_series(self, neuron_index, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
+    def plot_synaptic_current_time_series(self, neuron_index: int, trim=(None, None), style=None, label=None, scale=None, graph=None, **options):
         print('Drawing graph: current time series of neuron-{}'.format(neuron_index))
-        current, time = self._init_synaptic_current(neuron_index)
+        current = self._init_synaptic_current(neuron_index)
 
-        textbox = 'default'
-        filelabel = ''
-        fileextension = 'png'
-        subplotindex = None
-        for key, value in options.items():
-            if key == 'textbox': textbox = value
-            elif key == 'filelabel': filelabel = value
-            elif key == 'fileextension': fileextension = value
-            elif key == 'subplotindex': subplotindex = value
-            else: print('Warning: the optional argument [{}] is not supported'.format(key))
+        _ylabel = 'Synaptic current'
+        _filename = 'Synaptic current of neuron-{:d}'.format(neuron_index)
 
-        if graph == None:
-            graph = GraphDataRelation()
-            graph.create_plot(figsize=(14,7))
-            graph.add_data(time, current)
+        self._graph_timeseries_subroutine(current, neuron_index, trim, style, label, scale, graph, _ylabel=_ylabel, _filename=_filename, **options)
 
-            if textbox == 'default':
-                textbox = 'Neuron index: {:d} | T: {:.7} ms | dt: {:.5}'.format(
-                    int(neuron_index), float(self._config[2]), float(self._config[1]))
-                graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
-            elif textbox == 'none': graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)'))
-            else: graph.label_plot(dict(xlabel='Time (s)', ylabel='Current (mV)', textbox=textbox))
-            if style != None: graph.stylize_plot(style)
-            else: graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            if scale != None: graph.set_scale(scale)
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            graph.make_plot()
-            graph.save_plot('Current of neuron-{:d}'.format(neuron_index), label=filelabel, ext=fileextension, path=self._output_path)
-            graph.save_plot_info('current_neuron_{}'.format(neuron_index), path=self._output_path)
-        else:
-            graph.stylize_plot(dict(ls='-', lw=1, ms=0))
-            graph.set_scale(dict(grid=True))
-            if trim != (None, None): graph.set_scale(dict(xlim=trim))
-            else: graph.set_scale(dict(xlim=(np.amin(time), np.amax(time))))
-            if style != None: graph.stylize_plot(style)
-            if label != None: graph.label_plot(label)
-            graph.add_data(time, current)
-            graph.make_plot(subplotindex)
+    def plot_phase_diagram_voltage_recovery(self, neuron_index: int, trim=(None, None), label=None, graph=None, **options):
+        print('Drawing graph: phase diagram of membrane potential and recovery variable')
+        voltage = self._init_membrane_potential(neuron_index)
+        recovery = self._init_recovery_variable(neuron_index)
+
+        _axislabel = ['Membrane potential (mV)', 'Recovery variable']
+        _filename = 'Phase diagram voltage-recovery of neuron-{:d}'.format(neuron_index)
+
+        self._graph_phasediagram_subroutine(voltage, recovery, neuron_index, trim, label, graph, _axislabel=_axislabel, _filename=_filename, **options)
+
+    def plot_phase_diagram_voltage_current(self, neuron_index: int, trim=(None, None), label=None, graph=None, **options):
+        print('Drawing graph: phase diagram of membrane potential and synaptic current')
+        voltage = self._init_membrane_potential(neuron_index)
+        current = self._init_synaptic_current(neuron_index)
+
+        _axislabel = ['Membrane potential (mV)', 'Synaptic current']
+        _filename = 'Phase diagram voltage-current of neuron-{:d}'.format(neuron_index)
+
+        self._graph_phasediagram_subroutine(voltage, current, neuron_index, trim, label, graph, _axislabel=_axislabel, _filename=_filename, **options)
 
 
 # Other tools
-def plot_distribution(data, bin_size=0.15, color='b', marker_style='^', line_style='-',
+def quick_preview_density_distribution(data, binsize, logdata=False, saveplot=False):
+    graph = GraphDensityDistribution()
+    graph.create_plot()
+    graph.add_data(data, binsize, logdata=logdata)
+    if logdata: graph.set_scale(dict(xlogscale=True))
+    graph.make_plot()
+    if saveplot: graph.save_plot('temp_preview')
+    graph.show_plot()
+
+def _plot_distribution_deprecated(data, bin_size=0.15, color='b', marker_style='^', line_style='-',
                       plot_type='line', marker_size=8, marker_fill=True, line_width=2,
                       figsize=(9, 6), dpi=150, plot_label='', xlabel='', textbox='',
                       xlim=(None, None), ylim=(None, None), show_norm=False,
@@ -2430,13 +2466,13 @@ def fwrite_sparse_matrix(A: iter, filename: str, delim=' ', start_idx=1, dtype=f
         with open(filename, 'w') as fp:
             fp.write(str(len(A)))
             if dtype == int:
-                for i in range(len(A)):
-                    for j in range(len(A[i])):
+                for j in range(len(A)):
+                    for i in range(len(A[j])):
                         if A[i][j] != 0:
                             fp.write('\n{:d}{}{:d}{}{:d}'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
             else:
-                for i in range(len(A)):
-                    for j in range(len(A[i])):
+                for j in range(len(A)):
+                    for i in range(len(A[j])):
                         if A[i][j] != 0:
                             fp.write('\n{:d}{}{:d}{}{:.10f}'.format(j+start_idx, delim, i+start_idx, delim, A[i][j]))
     except FileNotFoundError:
@@ -2589,7 +2625,7 @@ def help_graph_formatting():
 
 
 # Miscellaneous
-def _colorline(x, y, z=None, cmap='hsv', norm=plt.Normalize(0.0, 1.0), linewidth=1, alpha=1):
+def _colorline(x, y, z=None, cmap='hsv', norm=plt.Normalize(0.0, 1.0), linewidth=1, alpha=1, ax=None):
     if z is None:
         z = np.linspace(0.0, 1.0, len(x))
     if not hasattr(z, "__iter__"):
@@ -2597,7 +2633,7 @@ def _colorline(x, y, z=None, cmap='hsv', norm=plt.Normalize(0.0, 1.0), linewidth
     z = np.asarray(z)
     segments = _make_segments(x, y)
     lc = mcol.LineCollection(segments, array=z, cmap=cmap, norm=norm, linewidth=linewidth, alpha=alpha)
-    ax = plt.gca()
+    if ax==None: ax = plt.gca()
     ax.add_collection(lc)
     return lc
 
