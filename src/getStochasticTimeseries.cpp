@@ -14,9 +14,6 @@
 /**
  * change log
  * ver 1.0 - init
- * ver 1.1 - IO update: exported files in /output
- *         - Output update: able to export also recovery variable and current time series
- *         - Input update: synaptic weights matrix nonzero format add network size at line 1
  * 
  */
 
