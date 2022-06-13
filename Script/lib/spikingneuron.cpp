@@ -86,4 +86,6 @@ extern "C"
     double get_current_driving(void) { return current_drive; }
     void set_current_driving(double _current_drive) { current_drive = _current_drive; }
     double get_current_stochastic(void) { return current_noise; }
+    int get_spike_timestep(int k) { return spike_timesteps[k]; }
+    int get_number_of_spikes(void) { return spike_timesteps.size(); }
 }

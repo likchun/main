@@ -4,18 +4,21 @@ from ctypes import *
 class NeuronType():
     # excitatory cells
     regular_spiking = dict(
+        name = 'Regular spiking',
         a = 0.02,
         b = 0.2,
         c = -65.0,
         d = 8.0
     )
     intrinsically_bursting = dict(
+        name = 'Intrinsically bursting',
         a = 0.02,
         b = 0.2,
         c = -55.0,
         d = 4.0
     )
     chattering = dict(
+        name = 'Chattering',
         a = 0.02,
         b = 0.2,
         c = -50.0,
@@ -24,12 +27,14 @@ class NeuronType():
 
     # inhibitory cells
     fast_spiking = dict(
+        name = 'Fast spiking',
         a = 0.1,
         b = 0.2,
         c = -65.0,
         d = 2.0
     )
     low_threshold_spiking = dict(
+        name = 'Low threshold spiking',
         a = 0.02,
         b = 0.25,
         c = -65.0,
@@ -58,6 +63,10 @@ class SpikingNeuronModel():
     lib.set_current_driving.argtypes = [c_double]
     lib.get_current_stochastic.restype = c_double
     lib.get_current_stochastic.argtypes = []
+    lib.get_spike_timestep.restype = c_int
+    lib.get_spike_timestep.argtypes = [c_int]
+    lib.get_number_of_spikes.restype = c_int
+    lib.get_number_of_spikes.argtypes = []
 
     def __init__(self, neuron_parameters, model_parameters):
         try:
@@ -100,3 +109,9 @@ class SpikingNeuronModel():
 
     def current_stochastic(self):
         return SpikingNeuronModel.lib.get_current_stochastic()
+
+    def spike_timestep(self, k: int):
+        return SpikingNeuronModel.lib.get_spike_timestep(k)
+
+    def number_of_spikes(self):
+        return SpikingNeuronModel.lib.get_number_of_spikes()
