@@ -1,3 +1,12 @@
+"""
+Neuron.py
+=========
+
+A handy tool simulate the dynamics of a single spiking neuron.
+
+"""
+
+
 import lib.spikingneuron as sn
 import lib.neurolib as nlib
 import numpy as np
