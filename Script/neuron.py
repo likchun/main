@@ -60,33 +60,36 @@ class Simulation:
         for i in range(self.number_of_spikes): self.spike_times.append(snm.spike_timestep(i))
         self.interspike_intervals = np.array(np.diff(self.spike_times), dtype=float)*model_parameters['delta_time']/1000
 
-def plot_time_series(sim: object, saveplot=True, showplot=False):
+def plot_time_series(sim: object, membrane_potential=True, recovery_variable=True,
+                     synaptic_current=True, saveplot=False, showplot=True, title='Time series'):
     # Time series
     xtime = np.arange(0, int(simulation_duration/model_parameters['delta_time']))
     g = nlib.GraphDataRelation()
     g.create_plot(figsize=(9,7))
     g.stylize_plot(dict(ms=0, ls='-'))
-    g.stylize_plot(dict(c='b'))
-    g.label_plot(dict(plotlabel=r'Membrane potential'))
-    g.add_data(xtime, sim.potential)
-    g.make_plot()
-    g.stylize_plot(dict(c='darkorange'))
-    g.label_plot(dict(plotlabel=r'Recovery variable'))
-    g.add_data(xtime, sim.recovery)
-    g.make_plot()
-    g.stylize_plot(dict(c='m'))
-    g.label_plot(dict(plotlabel=r'Synaptic current'))
-    g.add_data(xtime, sim.current)
-    g.make_plot()
+    if membrane_potential:
+        g.stylize_plot(dict(c='b'))
+        g.label_plot(dict(plotlabel=r'Membrane potential'))
+        g.add_data(xtime, sim.potential)
+        g.make_plot()
+    if recovery_variable:
+        g.stylize_plot(dict(c='darkorange'))
+        g.label_plot(dict(plotlabel=r'Recovery variable'))
+        g.add_data(xtime, sim.recovery)
+        g.make_plot()
+    if synaptic_current:
+        g.stylize_plot(dict(c='m'))
+        g.label_plot(dict(plotlabel=r'Synaptic current'))
+        g.add_data(xtime, sim.current)
+        g.make_plot()
     g.set_scale(dict(xlim=(0, simulation_duration)))
-    # g.ax.legend(prop={'size':15})
-    g.label_plot(dict(axislabel=['Time (ms)', ''], title='Time series', legend=True,
+    g.label_plot(dict(axislabel=['Time (ms)', ''], title=title, legend=True,
                       textbox='Neuron type: {} | step size: {} ms'.format(neurontype['name'],
                                model_parameters['delta_time'])))
     if saveplot: g.save_plot('Time series - single neuron')
     if showplot: g.show_plot()
 
-def plot_firing_rate_distribution(sim: object, binsize=0.1, saveplot=True, showplot=False):
+def plot_firing_rate_distribution(sim: object, binsize=0.1, saveplot=False, showplot=True):
     # Firing rate distribution
     g = nlib.GraphDensityDistribution()
     g.create_plot(figsize=(9,7))
@@ -99,7 +102,7 @@ def plot_firing_rate_distribution(sim: object, binsize=0.1, saveplot=True, showp
     if saveplot: g.save_plot('Firing rate distribution - single neuron')
     if showplot: g.show_plot()
 
-def plot_isi_distribution(sim: object, binsize: 0.1, saveplot=True, showplot=False):
+def plot_isi_distribution(sim: object, binsize: 0.1, saveplot=False, showplot=True):
     # ISI distribution
     g = nlib.GraphDensityDistribution()
     g.create_plot(figsize=(9,7))
@@ -116,7 +119,7 @@ def plot_isi_distribution(sim: object, binsize: 0.1, saveplot=True, showplot=Fal
 def main():
     sim = Simulation(simulation_duration, model_parameters, neurontype)
     sim.start()
-    plot_time_series(sim, False, True)
+    plot_time_series(sim)
     # plot_firing_rate_distribution(sim)
     # plot_isi_distribution(sim)
     pass
