@@ -29,9 +29,6 @@ to view all instructions such as additional arguments for graph plotting.
 Version: alpha03
 Last update: 14 June 2022
 
-In progress:
--
-
 """
 
 
