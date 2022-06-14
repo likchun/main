@@ -27,7 +27,7 @@ to view all instructions such as additional arguments for graph plotting.
 ----------
 
 Version: alpha03
-Last update: 08 June 2022
+Last update: 14 June 2022
 
 In progress:
 -
@@ -471,7 +471,7 @@ class Grapher:
                         self.axes[n].grid(True, which='minor', axis='both', color='0.85', linestyle='--')
                     else: self.axes[n].grid(False)
             if type(self._legend) == list:
-                for lg in self._legend: self.axes[lg[0]].legend(lg[1:])
+                for lg in self._legend: self.axes[lg[0]].legend(lg[1:])#, loc=2)
             if self._legend and self._legendcomb:
                 bbox = self.axes[0].get_position()
                 self.axes[0].set_position([bbox.x0, bbox.y0, bbox.width * 0.9, bbox.height])
@@ -1761,6 +1761,7 @@ class NeuralDynamics(Tool):
                     try: interspike_interval[count] = np.array(np.diff(self._spike_times[neuron]), dtype=float)
                     except ValueError: interspike_interval[count] = np.diff(np.array([0]))
                     count += 1
+        return interspike_interval / 1000
         interspike_interval = np.concatenate([item for item in interspike_interval.flatten()], 0) / 1000
         return interspike_interval
 
@@ -1842,12 +1843,12 @@ class NeuralDynamics(Tool):
         return self._init_firing_rate_change(neural_dynamics_original)
 
     def interspike_intervals(self) -> np.ndarray:
-        """Return the inter-spike intervals of action potential spikes in the network.
+        """Return the inter-spike intervals of action potential spikes of each neuron in the network.
 
         Returns
         -------
         numpy.ndarray
-            the inter-spike intervals of action potential spikes in the network
+            the i-th array element coressponds to the inter-spike intervals of action potential spikes of neuron i
         """
         return self._init_interspike_interval()
 
@@ -1962,7 +1963,7 @@ class NeuralDynamics(Tool):
             index of sub-plot to be drawn into, by default `0`
         """
         print('Drawing graph: distribution of inter-spike intervals (ISI)')
-        interspike_interval = self._init_interspike_interval(specific_neurons)
+        interspike_interval = np.concatenate([item for item in self._init_interspike_interval(specific_neurons).flatten()], 0)
 
         _xlabel = 'Inter-spike intervals ISI (s)'
         _filename = 'Distribution of inter-spike intervals'
