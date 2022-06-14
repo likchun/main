@@ -1,5 +1,5 @@
 """
-NeuronLib
+NeuralLib
 =========
 
 A library containing useful tools for analyzing data from neural network simulations.
@@ -14,15 +14,15 @@ How to use the library
 ----------------------
 Place the folder "lib" in your working directory. Do not modify its name or content.\n
 Import this library as follow:
->>> import lib.neuronlib as nlib
+>>> import lib.neurallib as neulib
 
 To import specific class:
->>> from lib.neuronlib import NeuralDynamics
+>>> from lib.neurallib import NeuralDynamics
 
 See class docstrings for help or further instructions, or you can use the following\n
 to view all instructions such as additional arguments for graph plotting.
->>> nlib.ask_for_help()
->>> nlib.help_graph_formatting()
+>>> neulib.ask_for_help()
+>>> neulib.help_graph_formatting()
 
 ----------
 
