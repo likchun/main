@@ -1,3 +1,14 @@
+"""
+SpikingNeuron
+=============
+
+Perform numerical simulation of a single spiking neuron with Izhikevich' model.
+
+----------
+Last update: 14 June 2022
+
+"""
+
 from ctypes import *
 
 
