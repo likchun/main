@@ -433,7 +433,7 @@ class Grapher:
                 self.ax.grid(True, which='minor', axis='both', color='0.85', linestyle='--')
             else: self.ax.grid(False)
             if type(self._legend) == list: self.ax.legend(self._legend)
-            elif self._legend: self.ax.legend()
+            elif self._legend: self.ax.legend(prop={'size':font_settings['size']*2/3})
             self.ax.set(xlabel=self._axislabel[0], ylabel=self._axislabel[1])
             if self._textbox != '':
                 props = dict(boxstyle='round', pad=0.1, facecolor='white', edgecolor='none', alpha=0.75)
@@ -459,7 +459,7 @@ class Grapher:
                     ax.grid(True, which='major', axis='both', color='0.6')
                     ax.grid(True, which='minor', axis='both', color='0.85', linestyle='--')
                 else: ax.grid(False)
-                if type(self._legend) == bool and self._legend and not self._legendcomb: ax.legend()
+                if type(self._legend) == bool and self._legend and not self._legendcomb: ax.legend(prop={'size':font_settings['size']*2/3})
                 if len(self._xlabelnplot) == 0: ax.set(xlabel=self._axislabel[0])
                 if len(self._ylabelnplot) == 0: ax.set(ylabel=self._axislabel[1])
             for n in self._xlabelnplot: self.axes[n].set(xlabel=self._axislabel[0])
@@ -471,11 +471,11 @@ class Grapher:
                         self.axes[n].grid(True, which='minor', axis='both', color='0.85', linestyle='--')
                     else: self.axes[n].grid(False)
             if type(self._legend) == list:
-                for lg in self._legend: self.axes[lg[0]].legend(lg[1:])#, loc=2)
+                for lg in self._legend: self.axes[lg[0]].legend(lg[1:], prop={'size':font_settings['size']*2/3})#, loc=2)
             if self._legend and self._legendcomb:
                 bbox = self.axes[0].get_position()
                 self.axes[0].set_position([bbox.x0, bbox.y0, bbox.width * 0.9, bbox.height])
-                self.axes[0].legend(loc='lower left', bbox_to_anchor=(0, 1.02, 1, 0.2))
+                self.axes[0].legend(loc='lower left', bbox_to_anchor=(0, 1.02, 1, 0.2), prop={'size':font_settings['size']*2/3})
             # ax.legend(title='Node index', loc='center left', bbox_to_anchor=(1, 0.5))
             pass
         else:
