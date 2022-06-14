@@ -53,7 +53,7 @@ class NeuronType():
     )
 
 class SpikingNeuronModel():
-    lib = cdll.LoadLibrary('./lib/spikingneuron.so')
+    lib = cdll.LoadLibrary('./lib/spikingneuronlib.so')
     lib.parameters.restype = None
     lib.parameters.argtypes = [c_double, c_double, c_double, c_double,
                                c_double, c_double, c_double, c_double,
