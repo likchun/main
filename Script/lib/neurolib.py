@@ -449,7 +449,7 @@ class Grapher:
                 elif type(self._textbox) == list:
                     for tb in self._textbox:
                         props = dict(boxstyle='round', pad=0.08, facecolor='white', edgecolor='none', alpha=0.75)
-                        self.axes[tb[0]].text(0.00001, 1.0+self._textboxypad, tb[1], fontsize=font_settings['size']*textbox_fontsize_multiplier,
+                        self.axes[tb[0]].text(0.00001, 1.05+self._textboxypad, tb[1], fontsize=font_settings['size']*textbox_fontsize_multiplier,
                                               verticalalignment='top', transform=self.axes[tb[0]].transAxes, bbox=props)
             for ax in self.axes:
                 if self._grid:
@@ -956,7 +956,8 @@ class Tool:
                 print('Warning: the chosen bin size = {} may be too large, it is recommended to use a value smaller than {}'.format(binsize, round_to_n((max_datum-min_datum)/10, 2)))
 
         if graph == None:
-            graph = GraphDensityDistribution()
+            if density: graph = GraphDensityDistribution()
+            else: graph = GraphHistogramDistribution()
             graph.create_plot(figsize=(9,7))
             graph.add_data(data, binsize, logdata=xlogscale)
             if fitgaussian != 'none':
