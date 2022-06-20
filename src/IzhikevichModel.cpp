@@ -18,7 +18,18 @@
  * ver 1.1 - IO update: exported files in /output
  *         - Output update: able to export also recovery variable and current time series
  *         - Input update: synaptic weights matrix nonzero format add network size at line 1
+ *         - Add some comments
  * 
+ */
+
+/**
+ * Optimizations used:
+ * 1. spike history truncation
+ * 2. auto-determined truncation steps
+ * 3. exponential values look-up table
+ * 4. loop through only non-zero links
+ * 5. reverse loop + break;
+ * 6. time series exported in binary format
  */
 
 
@@ -168,7 +179,7 @@ namespace constants
             constexpr const double c = -65.0;
             constexpr const double d = 2.0;
             constexpr const double threshold_potential = -80.0;
-            constexpr const double tau = 6.0; // what is this factor?
+            constexpr const double tau = 6.0;
         };
         namespace exc
         {
@@ -182,11 +193,11 @@ namespace constants
         constexpr const double initial_membrane_potential = -65.0;
         constexpr const double initial_recovery_variable = 8;
     }; // Izhikevich
-    // constexpr const double network_adoption_parameter = 2; // beta
     constexpr const unsigned int TIMESERIES_BUFFSIZE_THRESHOLD = 150000000;
 }; // constants
 
 
+/* Get all parameters and settings from "vars.txt" */
 class Parameters
 {
 private:
@@ -279,6 +290,18 @@ private:
 
 /* Neural Network */
 
+/* Import all synaptic weights of a network from a text file (.txt).
+   There are two formats this program can read:
+   1. "nonzero"
+      The first line stores the network size / number of neurons.
+      Each remaining line stores the a nonzero link:
+      {j i w}, where "j" is the outgoing neuron, "i" is the incoming neuron,
+      and "w" is the synaptic weight / coupling strength from neuron j to i.
+      The delimiter can be specified.
+   2. "full"
+      The file stores all synaptic weights in N rows and N columns, where N
+      is the network size / number of neurons. It's just the basic matrix
+      representation we use daily. */
 void import_synaptic_weights(
     const Parameters &par,
     int &network_size,
@@ -331,6 +354,10 @@ void import_synaptic_weights(
     }
 }
 
+/* Classify each neuron into INHibitory / EXCitatory / UNCLassified,
+   and store the result in "neuron_type". The i-th element of
+   the std::vector<int> "neuron_type" stores the type of the (i+1)th
+   neuron, which can be -1 (INH) / +1 (EXC) / 0 (UNCL). */
 void classify_neuron_type(
     const int network_size,
     std::vector<std::vector<double>> &synaptic_weights,
@@ -360,6 +387,10 @@ void classify_neuron_type(
     }
 }
 
+/* Create reference "inhibitory(excitatory)_links_index" which stores
+   N lists of indices. The i-th list of indices is all the indices of
+   inhibitory (excitatory) presynaptic neuron directing into the
+   (i+1)th neuron. Useful for speeding up the calculation. */
 void create_quick_link_index_reference(
     std::vector<std::vector<double>> &synaptic_weights,
     std::vector<std::vector<int>> &inhibitory_links_index,
@@ -552,6 +583,9 @@ void display_current_datetime()
     std::cout << datetime_buf << '\n';
 }
 
+/* Estimate the truncation steps needed for the calculation. It uses the
+   precision of floating point number / double as a reference to determine
+   the threshold of truncation steps that give accurate results. */
 void estimate_truncation_step(
     const Parameters &par,
     std::vector<std::vector<double>> &synaptic_weights,
@@ -578,6 +612,9 @@ void estimate_truncation_step(
     if (w_exc_max == 0 || par.synaptic_weights_multiplying_factor == 0) { truncation_step_exc = 0; }
 }
 
+/* Create a look-up table for the exponential spike decay factors.
+   Avoid calculating the expensive and redundant exponential function
+   multiple times. */
 void setup_exp_lookup_table(
     const Parameters &par,
     std::vector<double> &spike_decay_factor_inh,
@@ -752,6 +789,9 @@ void export_file_info(
     }
 }
 
+/* Save the numerical data of the last step, which is useful for
+   continuing the numerical simulation. This function will be
+   implemented in the future. */
 void export_file_continuation(
     const Parameters &par,
     const int network_size,
@@ -853,8 +893,8 @@ void export_file_spike_data(
 
 int main(int argc, char **argv)
 {
-    // int     mode = 0;			// 0: overwrite mode | 1: continue mode
-    int continuation = -1;	// count the number of times of continuation
+    // int mode = 0;           // 0: overwrite mode | 1: continue mode (not implemented)
+    int continuation = -1;  // count the number of times of continuation (not implemented)
     int	now_step, diff_step, total_step;
     int	truncation_step_inh, truncation_step_exc;
     int _network_size;
@@ -885,8 +925,7 @@ int main(int argc, char **argv)
     if (argc > 1) {
         for (int i = 1; i < argc; ++i) {
             if (std::string(argv[i]) == "-bypass") {}
-        }
-    }
+    }}
 
     const Parameters par(NO_MAIN_ARGUMENT ? DEFAULT_INPUT_FILENAME_PARAMETERS : argv[1]);
 
@@ -933,8 +972,10 @@ int main(int argc, char **argv)
 
         for (int node = 0; node < network_size; ++node)
         {
-            v_temp = membrane_potential[node];	// so that the other variables take
-                                                // the membrane potential of the previous step
+            v_temp = membrane_potential[node];  // Make a temporary copy so
+                                                // that the other variables
+                                                // take the membrane potential
+                                                // of the previous step
             membrane_potential[node] += (
                 (0.04 * membrane_potential[node] * membrane_potential[node]) + (5 * membrane_potential[node])
                 + 140 - recovery_variable[node] + synaptic_current[node]
@@ -969,7 +1010,7 @@ int main(int argc, char **argv)
                     diff_step = now_step - spike_timesteps[in_inh][spk];
                     if (diff_step < truncation_step_inh) {
                         spike_contribution_sum += spike_decay_factor_inh[diff_step];
-                    } else { break; }
+                    } else { break; } // Iterate the loop backwards with a conditional break can terminate the loop early to avoid uncessary operations
                 }
                 conductance_inh -= (synaptic_weights[node][in_inh] * spike_contribution_sum);
             }
@@ -992,42 +1033,44 @@ int main(int argc, char **argv)
             ) + driving_current;
         }
 
-        if (exportVoltageTimeSeries)    // Export voltage time series data for all nodes (for >TIMESERIES_BUFF)
+        /* Here, the membrane potential (and other variables) of all neurons
+           in a step will be added to a buffer "voltage_time_series_buffer".
+           When the buffer is full (i.e., > TIMESERIES_BUFF), the data will
+           be dumped into a binary file and the buffer is cleaned. If the
+           amount of data is less than "TIMESERIES_BUFF", or after the
+           numerical calculation is finished, there will be some "residue"
+           data left in the buffer. Those will be treated later. */
+        if (exportVoltageTimeSeries) // for >TIMESERIES_BUFF
         {
             for (auto &v : membrane_potential) { voltage_time_series_buffer.push_back(v); }
-            // Flush to output file and clear buffer
+            // Flush to output file and clear buffer if size exceed "TIMESERIES_BUFF"
             if (voltage_time_series_buffer.size() >= constants::TIMESERIES_BUFFSIZE_THRESHOLD) {
                 ofs_voltage_timeseries.write(
                     reinterpret_cast<char*>(&voltage_time_series_buffer[0]),
                     voltage_time_series_buffer.size()*sizeof(float)
                 );
                 voltage_time_series_buffer.clear();
-            }
-        }
-        if (exportRecoverTimeSeries)    // Export recovery time series data for all nodes (for >TIMESERIES_BUFF)
+        }}
+        if (exportRecoverTimeSeries)
         {
             for (auto &v : recovery_variable) { recover_time_series_buffer.push_back(v); }
-            // Flush to output file and clear buffer
             if (recover_time_series_buffer.size() >= constants::TIMESERIES_BUFFSIZE_THRESHOLD) {
                 ofs_recover_timeseries.write(
                     reinterpret_cast<char*>(&recover_time_series_buffer[0]),
                     recover_time_series_buffer.size()*sizeof(float)
                 );
                 recover_time_series_buffer.clear();
-            }
-        }
-        if (exportCurrentTimeSeries)    // Export current time series data for all nodes (for >TIMESERIES_BUFF)
+        }}
+        if (exportCurrentTimeSeries)
         {
             for (auto &v : synaptic_current) { current_time_series_buffer.push_back(v); }
-            // Flush to output file and clear buffer
             if (current_time_series_buffer.size() >= constants::TIMESERIES_BUFFSIZE_THRESHOLD) {
                 ofs_current_timeseries.write(
                     reinterpret_cast<char*>(&current_time_series_buffer[0]),
                     current_time_series_buffer.size()*sizeof(float)
                 );
                 current_time_series_buffer.clear();
-            }
-        }
+        }}
     }
 
     std::cout << "Completed. Time elapsed: " << (double)(clock() - lap)/CLOCKS_PER_SEC << " s\n";
@@ -1042,7 +1085,9 @@ int main(int argc, char **argv)
     export_file_spike_data(par, spike_timesteps);
     std::cout << "OKAY, spike data exported" << std::endl;
 
-    if (exportVoltageTimeSeries)   // Export volatge time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    /* The "residue" data aforementioned will be dumped to the binary
+       file here. */
+    if (exportVoltageTimeSeries) // for <TIMESERIES_BUFF and residue
     {
         ofs_voltage_timeseries.write(
             reinterpret_cast<char*>(&voltage_time_series_buffer[0]),
@@ -1053,7 +1098,7 @@ int main(int argc, char **argv)
         }
         std::cout << "OKAY, membrane potential time series exported" << std::endl;
     }
-    if (exportRecoverTimeSeries)   // Export recovery variable time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    if (exportRecoverTimeSeries)
     {
         ofs_recover_timeseries.write(
             reinterpret_cast<char*>(&recover_time_series_buffer[0]),
@@ -1064,7 +1109,7 @@ int main(int argc, char **argv)
         }
         std::cout << "OKAY, recovery variable time series exported" << std::endl;
     }
-    if (exportCurrentTimeSeries)   // Export current time series data for all nodes (for <TIMESERIES_BUFF and residue)
+    if (exportCurrentTimeSeries)
     {
         ofs_current_timeseries.write(
             reinterpret_cast<char*>(&current_time_series_buffer[0]),
