@@ -2,8 +2,8 @@
  * @file IzhikevichModel.cpp
  * @author likchun@outlook.com
  * @brief simulate the dynamics of a network of spiking neurons with Izhikevich's model
- * @version 1.1.1(4)
- * @date 2022-05-12
+ * @version 1.1.2(5)
+ * @date 2022-06-20
  * 
  * @copyright free to use
  * 
@@ -72,7 +72,7 @@ struct  stat st = {0};
 #define CREATE_OUTPUT_DIRECTORY(__DIR)          if (stat(__DIR, &st) == -1) { mkdir(__DIR, 0700); }
 #endif
 
-std::string code_ver = "Version 1.1.1\nBuild 4\nLast Update 12 May 2022";
+std::string code_ver = "Version 1.1.2\nBuild 5\nLast Update 20 June 2022";
 
 
 namespace datatype_precision
@@ -585,7 +585,7 @@ void display_current_datetime()
 
 /* Estimate the truncation steps needed for the calculation. It uses the
    precision of floating point number / double as a reference to determine
-   the threshold of truncation steps that give accurate results. */
+   the threshold of truncation steps that gives accurate results. */
 void estimate_truncation_step(
     const Parameters &par,
     std::vector<std::vector<double>> &synaptic_weights,
